@@ -598,7 +598,7 @@ def index():
     if not MENSAGENS:
         MENSAGENS = [{
             "role": "assistant", 
-            "content": "Olá! Sou o assistente virtual da CarGlass. Digite seu CPF, telefone ou placa do veículo para começarmos."
+            "content": "Olá! Sou Clara, sua assistente virtual da CarGlass. Digite seu CPF, telefone ou placa do veículo para começarmos."
         }]
         HISTORICO_OPENAI = []
         ESCALATION_NEEDED = False
@@ -702,7 +702,7 @@ def reset():
     # Limpa as variáveis globais
     MENSAGENS = [{
         "role": "assistant", 
-        "content": "Olá! Sou o assistente virtual da CarGlass. Digite seu CPF, telefone ou placa do veículo para começarmos."
+        "content": "Olá! Sou Clara, sua assistente virtual da CarGlass. Digite seu CPF, telefone ou placa do veículo para começarmos."
     }]
     CLIENTE_IDENTIFICADO = False
     CLIENTE_INFO = None
