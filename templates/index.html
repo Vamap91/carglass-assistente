@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CarGlass - Assistente Virtual</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="icon" href="https://www.carglass.com.br/wp-content/uploads/2023/02/favicon.png" type="image/png">
+</head>
+<body>
+    <div class="chat-container">
+        <div class="header">
+            <img src="https://www.carglass.com.br/wp-content/uploads/2023/02/logoCarglass.png" alt="CarGlass" width="200">
+        </div>
+        
+        <div class="chat-messages" id="chat-messages">
+            <!-- Mensagens serão inseridas aqui via JavaScript -->
+        </div>
+        
+        <div class="input-container">
+            <input type="text" id="user-input" placeholder="Digite CPF, telefone ou placa do veículo...">
+            <button id="send-button">Enviar</button>
+            <button id="reset-button">Nova Consulta</button>
+        </div>
+        
+        <div class="footer">
+            <p>© 2025 CarGlass Brasil - Assistente Virtual</p>
+            <p>Central de Atendimento: 0800-727-2327 | WhatsApp: (11) 4003-8070</p>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>
