@@ -5,6 +5,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const sendButton = document.getElementById('send-button');
     const resetButton = document.getElementById('reset-button');
     
+    // Variável para evitar respostas duplicadas
+    let lastUserMessage = '';
+    
     // Carregar mensagens iniciais
     function loadMessages() {
         fetch('/get_messages')
@@ -32,7 +35,10 @@ document.addEventListener('DOMContentLoaded', function() {
     function sendMessage() {
         const message = userInput.value.trim();
         
-        if (message) {
+        // Previne envio de mensagem vazia ou duplicada
+        if (message && message !== lastUserMessage) {
+            lastUserMessage = message;
+            
             // Desabilita a entrada durante o envio
             userInput.disabled = true;
             sendButton.disabled = true;
@@ -86,6 +92,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Rola para a última mensagem
                 chatMessages.scrollTop = chatMessages.scrollHeight;
             });
+        } else if (message) {
+            // Apenas limpa o campo se for mensagem duplicada
+            userInput.value = '';
         }
     }
     
@@ -93,16 +102,25 @@ document.addEventListener('DOMContentLoaded', function() {
     function updateChatMessages(messages) {
         chatMessages.innerHTML = '';
         
+        // Histórico de mensagens para evitar duplicatas
+        const messageHistory = new Set();
+        
         messages.forEach(msg => {
-            const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${msg.role}`;
-            
-            const contentDiv = document.createElement('div');
-            contentDiv.className = 'message-content';
-            contentDiv.innerHTML = msg.content;
-            
-            messageDiv.appendChild(contentDiv);
-            chatMessages.appendChild(messageDiv);
+            // Verifica se a mensagem é duplicata (mesmo conteúdo e role)
+            const msgKey = `${msg.role}-${msg.content.trim()}`;
+            if (!messageHistory.has(msgKey)) {
+                messageHistory.add(msgKey);
+                
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `message ${msg.role}`;
+                
+                const contentDiv = document.createElement('div');
+                contentDiv.className = 'message-content';
+                contentDiv.innerHTML = msg.content;
+                
+                messageDiv.appendChild(contentDiv);
+                chatMessages.appendChild(messageDiv);
+            }
         });
         
         // Rola para a última mensagem
@@ -125,6 +143,7 @@ document.addEventListener('DOMContentLoaded', function() {
             // Limpa e foca no campo de entrada
             userInput.value = '';
             userInput.focus();
+            lastUserMessage = '';
             
             // Restaura o botão
             resetButton.disabled = false;
