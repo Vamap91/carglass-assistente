@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>CarGlass - Assistente Virtual</title>
+    <title>CarGlass - Atendente Clara</title>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
@@ -10,7 +10,14 @@
 <body>
     <div class="chat-container">
         <div class="header">
-            <img src="https://www.carglass.com.br/wp-content/uploads/2023/02/logoCarglass.png" alt="CarGlass" width="200">
+            <img src="https://www.carglass.com.br/wp-content/uploads/2023/02/logoCarglass.png" alt="CarGlass" class="header-logo">
+            <div class="header-title">
+                <h1>Atendente Clara</h1>
+                <p>Assistente Virtual da CarGlass</p>
+            </div>
+            <div class="header-avatar">
+                <img src="https://i.imgur.com/qfUfXNv.png" alt="Avatar Clara">
+            </div>
         </div>
         
         <div class="chat-messages" id="chat-messages">
@@ -19,13 +26,25 @@
         
         <div class="input-container">
             <input type="text" id="user-input" placeholder="Digite CPF, telefone ou placa do veículo...">
-            <button id="send-button">Enviar</button>
+            <button id="send-button">
+                Enviar
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-left: 5px;">
+                    <line x1="22" y1="2" x2="11" y2="13"></line>
+                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+            </button>
             <button id="reset-button">Nova Consulta</button>
         </div>
         
         <div class="footer">
+            <img src="https://www.carglass.com.br/wp-content/uploads/2023/02/logoCarglass.png" alt="CarGlass" width="100">
             <p>© 2025 CarGlass Brasil - Assistente Virtual</p>
             <p>Central de Atendimento: 0800-727-2327 | WhatsApp: (11) 4003-8070</p>
+            <div class="footer-links">
+                <a href="https://www.carglass.com.br/politica-de-privacidade/" target="_blank">Política de Privacidade</a>
+                <a href="https://www.carglass.com.br/contato/" target="_blank">Contato</a>
+                <a href="https://www.carglass.com.br/lojas/" target="_blank">Nossas Lojas</a>
+            </div>
         </div>
     </div>
 
