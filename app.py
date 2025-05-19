@@ -141,7 +141,9 @@ def detect_identifier_type(text):
     # Verifica telefone (padrões brasileiros)
     # Suporta: celulares (9 dígitos + DDD), fixos (8 dígitos + DDD), com/sem código do país
     # Exemplos: 11987654321, 1187654321, 5511987654321, 551187654321
-    elif (re.match(r'^\d{10,11}
+    elif (re.match(r'^\d{10,11}$', clean_text) or  # Formato comum: DDD + número
+      re.match(r'^55\d{10,11}$', clean_text) or  # Com código do Brasil (55)
+      re.match(r'^\+55\d{10,11}$', clean_text.replace('+', ''))):  # Com + no código
     
     # Verifica placa
     elif re.match(r'^[A-Za-z]{3}\d{4}$', clean_text) or re.match(r'^[A-Za-z]{3}\d[A-Za-z]\d{2}$', clean_text):
