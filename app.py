@@ -1,9 +1,17 @@
 from flask import Flask, render_template, request, jsonify
 import random
 import re
+import os
+import openai
+from openai import OpenAI
 
 app = Flask(__name__)
 app.secret_key = 'carglass-secreto'
+
+# Configuração da OpenAI API
+# Na produção, use variáveis de ambiente ou secrets.toml
+OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', 'sua-chave-api')
+client = OpenAI(api_key=OPENAI_API_KEY)
 
 # Lista para armazenar mensagens (em uma aplicação real, usaria banco de dados)
 MENSAGENS = []
@@ -26,7 +34,7 @@ def detect_identifier_type(text):
         return "telefone", clean_text
     
     # Verifica placa
-    elif re.match(r'^[A-Za-z]{3}\d{4}$', clean_text):
+    elif re.match(r'^[A-Za-z]{3}\d{4}$', clean_text) or re.match(r'^[A-Za-z]{3}\d[A-Za-z]\d{2}$', clean_text):
         return "placa", clean_text.upper()
     
     # Não identificado
@@ -38,8 +46,12 @@ def get_client_data(tipo, valor):
     if (tipo == "cpf" and len(valor) == 11) or tipo == "telefone":
         return {
             "sucesso": True,
+            "tipo": tipo,
+            "valor": valor,
             "dados": {
                 "nome": "Carlos Teste",
+                "cpf": "12345678900",
+                "telefone": "11987654321",
                 "ordem": "ORD12345",
                 "status": "Em andamento",
                 "tipo_servico": "Troca de Parabrisa",
@@ -52,15 +64,53 @@ def get_client_data(tipo, valor):
         }
     return {"sucesso": False, "mensagem": "Cliente não encontrado"}
 
-# Processa as perguntas após identificação
-def process_user_query(pergunta, cliente_info):
-    respostas = [
-        f"Olá! Seu serviço de {cliente_info['dados']['tipo_servico']} está previsto para ser concluído hoje.",
-        f"Com prazer! Seu veículo {cliente_info['dados']['veiculo']['modelo']} está atualmente na fase de instalação.",
-        f"Claro! A loja mais próxima fica na Av. Paulista, 1000 - São Paulo. Funciona das 8h às 18h.",
-        f"A garantia do serviço de {cliente_info['dados']['tipo_servico']} é de 12 meses a partir da data de conclusão."
-    ]
-    return random.choice(respostas)
+# Gera resposta contextualizada usando a OpenAI API
+def get_ai_response(pergunta, cliente_info):
+    try:
+        # Constrói o prompt para a OpenAI API com contexto do cliente
+        system_message = f"""
+        Você é o assistente virtual da CarGlass. Você está conversando com {cliente_info['dados']['nome']}, 
+        que tem um atendimento com as seguintes informações:
+        - Status: {cliente_info['dados']['status']}
+        - Ordem: {cliente_info['dados']['ordem']}
+        - Serviço: {cliente_info['dados']['tipo_servico']}
+        - Veículo: {cliente_info['dados']['veiculo']['modelo']} - {cliente_info['dados']['veiculo']['ano']}
+        - Placa: {cliente_info['dados']['veiculo']['placa']}
+        
+        Forneça uma resposta personalizada considerando o contexto do atendimento. 
+        Seja simpático, breve e objetivo. Não invente informações que não constam nos dados acima.
+        Se o cliente pedir informações como prazo de conclusão ou detalhes específicos do serviço que 
+        não estão nos dados acima, explique que você precisará verificar com a equipe técnica 
+        e sugira entrar em contato pelo telefone 0800-727-2327.
+        
+        A pergunta do cliente é: {pergunta}
+        """
+        
+        # Chamada para a API da OpenAI
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": pergunta}
+            ],
+            max_tokens=150,
+            temperature=0.7
+        )
+        
+        # Extrai a resposta
+        ai_response = response.choices[0].message.content.strip()
+        return ai_response
+        
+    except Exception as e:
+        print(f"Erro ao chamar a API OpenAI: {e}")
+        # Respostas de fallback em caso de erro na API
+        fallback_responses = [
+            f"Olá! Seu serviço de {cliente_info['dados']['tipo_servico']} está em andamento. Nossa equipe está trabalhando para entregar o melhor resultado.",
+            f"Seu veículo {cliente_info['dados']['veiculo']['modelo']} está sendo atendido por nossa equipe técnica especializada.",
+            "A loja mais próxima fica na Av. Paulista, 1000 - São Paulo. Funciona das 8h às 18h.",
+            f"A garantia do serviço de {cliente_info['dados']['tipo_servico']} é de 12 meses a partir da data de conclusão."
+        ]
+        return random.choice(fallback_responses)
 
 # Rota da página inicial
 @app.route('/')
@@ -131,8 +181,8 @@ def send_message():
             # Formato inválido
             response = "Por favor, forneça um CPF (11 dígitos), telefone ou placa válida."
     else:
-        # Cliente já identificado, processa pergunta
-        response = process_user_query(user_input, CLIENTE_INFO)
+        # Cliente já identificado, processa pergunta com IA
+        response = get_ai_response(user_input, CLIENTE_INFO)
     
     # Adiciona resposta do assistente
     MENSAGENS.append({"role": "assistant", "content": response})
