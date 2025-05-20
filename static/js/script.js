@@ -5,6 +5,14 @@ document.addEventListener('DOMContentLoaded', function() {
     const sendButton = document.getElementById('send-button');
     const resetButton = document.getElementById('reset-button');
     
+    // Função para obter a hora atual formatada (HH:MM)
+    function getCurrentTime() {
+        const now = new Date();
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        return `${hours}:${minutes}`;
+    }
+    
     // Carregar mensagens iniciais
     function loadMessages() {
         fetch('/get_messages')
@@ -22,7 +30,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         <div class="message-content">
                             Olá! Sou Clara, sua assistente virtual da CarGlass. Digite seu CPF, telefone ou placa do veículo para começarmos.
                         </div>
-                        <div class="message-time">19:25</div>
+                        <div class="message-time">${getCurrentTime()}</div>
                     </div>
                 </div>
             `;
@@ -86,7 +94,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         <div class="message-content">
                             Desculpe, ocorreu um erro ao processar sua mensagem. Por favor, tente novamente.
                         </div>
-                        <div class="message-time">19:25</div>
+                        <div class="message-time">${getCurrentTime()}</div>
                     </div>
                 `;
                 chatMessages.appendChild(errorMsg);
@@ -113,7 +121,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         <div class="message-content">
                             ${msg.content}
                         </div>
-                        <div class="message-time">${msg.time || '19:25'}</div>
+                        <div class="message-time">${msg.time || getCurrentTime()}</div>
                     </div>
                 `;
             } else {
@@ -123,7 +131,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         <div class="message-content">
                             ${msg.content}
                         </div>
-                        <div class="message-time">${msg.time || '19:26'}</div>
+                        <div class="message-time">${msg.time || getCurrentTime()}</div>
                     </div>
                     <div class="user-badge">V</div>
                 `;
