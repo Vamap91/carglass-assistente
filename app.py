@@ -5,14 +5,27 @@ import os
 import openai
 import time
 import uuid
+import requests
+import logging
 
 app = Flask(__name__)
 app.secret_key = 'carglass-secreto'
+
+# Configuração de logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Configuração da OpenAI API
 # Na produção, use variáveis de ambiente ou secrets.toml
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
 openai.api_key = OPENAI_API_KEY
+
+# Configuração para usar API real ou mockada
+USE_REAL_API = False  # Mude para True para usar API real da CarGlass
+API_BASE_URL = "http://fusion-hml.carglass.hml.local:3000/api/status"
 
 # Lista para armazenar mensagens (em uma aplicação real, usaria banco de dados)
 MENSAGENS = []
@@ -41,8 +54,76 @@ def detect_identifier_type(text):
     # Não identificado
     return None, clean_text
 
-# Simula busca de dados (em produção, seria uma API real)
+# Busca dados do cliente na API Fusion da CarGlass
 def get_client_data(tipo, valor):
+    """
+    Busca dados do cliente na API Fusion da CarGlass.
+    Se USE_REAL_API = True, consulta API real, caso contrário retorna dados mockados.
+    """
+    if USE_REAL_API:
+        # Mapeamento de tipos para endpoints da API
+        endpoints = {
+            "cpf": f"{API_BASE_URL}/cpf/{valor}",
+            "telefone": f"{API_BASE_URL}/telefone/{valor}",
+            "ordem": f"{API_BASE_URL}/ordem/{valor}"
+            # "placa" ainda não está disponível na API
+        }
+        
+        # Verifica se o tipo de consulta é suportado
+        if tipo not in endpoints:
+            logger.warning(f"Tipo de consulta '{tipo}' não suportado pela API")
+            return {"sucesso": False, "mensagem": f"Tipo de consulta '{tipo}' não suportado"}
+        
+        try:
+            # Configuração dos headers da requisição
+            headers = {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+            
+            # Log da requisição
+            logger.info(f"Consultando API: {endpoints[tipo]}")
+            
+            # Faz a requisição à API
+            response = requests.get(endpoints[tipo], headers=headers, timeout=5)
+            
+            # Verifica o status da resposta
+            if response.status_code == 200:
+                data = response.json()
+                logger.info(f"Resposta da API recebida com sucesso: {data.get('sucesso')}")
+                return data
+            else:
+                # Trata erros de status HTTP
+                logger.error(f"Erro ao consultar API: Status {response.status_code}")
+                return {
+                    "sucesso": False, 
+                    "mensagem": f"Erro ao consultar API: Status {response.status_code}"
+                }
+                
+        except requests.exceptions.RequestException as e:
+            # Trata erros de conexão
+            logger.error(f"Erro de conexão com a API: {str(e)}")
+            return {
+                "sucesso": False,
+                "mensagem": f"Erro de conexão com a API: {str(e)}"
+            }
+        except Exception as e:
+            # Trata outros erros
+            logger.error(f"Erro ao processar requisição: {str(e)}")
+            return {
+                "sucesso": False,
+                "mensagem": f"Erro ao processar requisição: {str(e)}"
+            }
+    else:
+        # Usando dados mockados (versão original)
+        return get_mock_client_data(tipo, valor)
+
+# Versão mockada da função get_client_data para testes locais
+def get_mock_client_data(tipo, valor):
+    """
+    Versão mock da função get_client_data para testes locais quando a API estiver indisponível.
+    Retorna os mesmos dados mockados da versão original.
+    """
     # Dados simulados para diferentes status de atendimento
     mock_data = {
         "12345678900": {
@@ -516,7 +597,7 @@ def get_ai_response(pergunta, cliente_info):
         return ai_response
         
     except Exception as e:
-        print(f"Erro ao chamar a API OpenAI: {e}")
+        logger.error(f"Erro ao chamar a API OpenAI: {e}")
         # Respostas de fallback em caso de erro na API
         fallback_responses = [
             f"Seu serviço de {cliente_info['dados']['tipo_servico']} está em andamento. Nossa equipe está trabalhando para entregar o melhor resultado.",
@@ -545,6 +626,36 @@ def index():
 @app.route('/get_messages')
 def get_messages():
     return jsonify({"messages": MENSAGENS})
+
+# Rota para testar API
+@app.route('/api_test')
+def api_test():
+    """
+    Rota para testar a conexão com a API
+    Acesse /api_test?tipo=cpf&valor=12345678900 para testar
+    """
+    tipo = request.args.get('tipo', 'cpf')
+    valor = request.args.get('valor', '12345678900')
+    
+    # Força uso da API real para este teste
+    old_setting = USE_REAL_API
+    global USE_REAL_API
+    USE_REAL_API = True
+    
+    result = get_client_data(tipo, valor)
+    
+    # Restaura configuração
+    USE_REAL_API = old_setting
+    
+    return jsonify({
+        "teste": "API Fusion CarGlass",
+        "configuracao": {
+            "tipo": tipo,
+            "valor": valor,
+            "endpoint": f"{API_BASE_URL}/{tipo}/{valor}"
+        },
+        "resultado": result
+    })
 
 # Rota para processar mensagens
 @app.route('/send_message', methods=['POST'])
@@ -615,48 +726,3 @@ def send_message():
                 
                 Como posso ajudar você hoje?
                 """
-            else:
-                # Cliente não encontrado
-                response = f"""
-                Não consegui encontrar informações com o {tipo} fornecido.
-                
-                Por favor, tente novamente ou use outro identificador.
-                """
-        else:
-            # Formato inválido
-            response = "Por favor, forneça um CPF (11 dígitos), telefone ou placa válida."
-    else:
-        # Cliente já identificado, processa pergunta com IA
-        response = get_ai_response(user_input, CLIENTE_INFO)
-    
-    # Adiciona resposta do assistente
-    MENSAGENS.append({
-        "role": "assistant", 
-        "content": response,
-        "time": current_time
-    })
-    
-    return jsonify({
-        'messages': MENSAGENS
-    })
-
-# Rota para reiniciar conversa
-@app.route('/reset', methods=['POST'])
-def reset():
-    global MENSAGENS, CLIENTE_IDENTIFICADO, CLIENTE_INFO
-    
-    # Limpa as mensagens
-    MENSAGENS = [{
-        "role": "assistant", 
-        "content": "Olá! Sou Clara, sua assistente virtual da CarGlass. Digite seu CPF, telefone ou placa do veículo para começarmos.",
-        "time": time.strftime("%H:%M")
-    }]
-    CLIENTE_IDENTIFICADO = False
-    CLIENTE_INFO = None
-    
-    return jsonify({
-        'messages': MENSAGENS
-    })
-
-if __name__ == '__main__':
-    app.run(debug=True)
