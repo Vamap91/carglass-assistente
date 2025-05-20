@@ -324,3 +324,177 @@ button:hover {
         font-size: 8px;
     }
 }
+/* Estilos para a nova barra de progresso e timeline */
+.status-progress-container {
+  margin: 15px 0;
+  padding: 15px;
+  background-color: #f9f9f9;
+  border-radius: 8px;
+  border: 1px solid #eee;
+}
+
+.status-current {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 15px;
+}
+
+.status-date {
+  font-size: 12px;
+  color: #666;
+}
+
+.progress-timeline {
+  position: relative;
+  margin: 20px 0;
+}
+
+.timeline-track {
+  display: flex;
+  justify-content: space-between;
+  position: relative;
+  padding: 0 10px;
+}
+
+/* Linha horizontal que conecta os nós */
+.timeline-track:before {
+  content: '';
+  position: absolute;
+  width: calc(100% - 20px);
+  height: 3px;
+  background-color: #e5e7eb;
+  top: 10px;
+  left: 10px;
+  z-index: 1;
+}
+
+/* Parte colorida da linha (progresso) */
+.timeline-track:after {
+  content: '';
+  position: absolute;
+  width: var(--progress-width, 0%);
+  height: 3px;
+  background-color: #fff200; /* Amarelo CarGlass */
+  top: 10px;
+  left: 10px;
+  z-index: 2;
+  transition: width 0.5s ease;
+}
+
+.timeline-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  z-index: 3;
+  width: 14.28%; /* 7 etapas, 100% ÷ 7 */
+}
+
+.timeline-step .step-node {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background-color: #e5e7eb;
+  margin-bottom: 8px;
+  border: 2px solid #e5e7eb;
+}
+
+.timeline-step .step-label {
+  font-size: 11px;
+  color: #666;
+  text-align: center;
+  max-width: 80px;
+}
+
+/* Etapas completadas */
+.timeline-step.completed .step-node {
+  background-color: #fff200; /* Amarelo CarGlass */
+  border-color: #e30613; /* Borda vermelha CarGlass */
+}
+
+/* Etapa atual */
+.timeline-step.active .step-node {
+  background-color: #fff200; /* Amarelo CarGlass */
+  border-color: #e30613; /* Vermelho CarGlass */
+  /* Efeito de pulso para chamar atenção */
+  animation: pulse 2s infinite;
+}
+
+/* Próxima etapa */
+.timeline-step.next .step-node {
+  border-color: #e30613; /* Vermelho CarGlass */
+}
+
+.step-highlight {
+  font-size: 10px;
+  color: #e30613; /* Vermelho CarGlass */
+  font-weight: bold;
+  margin-top: 3px;
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(227, 6, 19, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(227, 6, 19, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(227, 6, 19, 0);
+  }
+}
+
+/* Status específicos com cores diferentes */
+.status-tag.agendado {
+  background-color: #fff200; /* Amarelo CarGlass */
+  color: #333;
+}
+
+.status-tag.andamento {
+  background-color: #fff200; /* Amarelo CarGlass */
+  color: #333;
+}
+
+.status-tag.liberada {
+  background-color: #fff200; /* Amarelo CarGlass */
+  color: #333;
+}
+
+.status-tag.identificada {
+  background-color: #fff200; /* Amarelo CarGlass */
+  color: #333;
+}
+
+.status-tag.recebidas {
+  background-color: #fff200; /* Amarelo CarGlass */
+  color: #333;
+}
+
+.status-tag.aguardando {
+  background-color: #fff200; /* Amarelo CarGlass */
+  color: #333;
+}
+
+.status-tag.aberta {
+  background-color: #fff200; /* Amarelo CarGlass */
+  color: #333;
+}
+
+.status-tag.concluido {
+  background-color: #4BB543; /* Verde para concluído */
+  color: white;
+}
+
+/* Responsividade para a timeline em dispositivos móveis */
+@media (max-width: 600px) {
+  .timeline-step .step-label {
+    font-size: 9px;
+    max-width: 60px;
+  }
+  
+  .timeline-step .step-node {
+    width: 16px;
+    height: 16px;
+  }
+}
