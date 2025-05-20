@@ -8,7 +8,7 @@
 }
 
 body {
-    background-color: #f5f7fa;
+    background-color: #f9f3ef; /* Fundo bege claro como na imagem */
     padding: 20px;
     height: 100vh;
     display: flex;
@@ -33,6 +33,21 @@ body {
     padding: 15px;
     border-bottom: 1px solid #eee;
     background-color: white;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.header h1 {
+    color: #e30613; /* Vermelho CarGlass */
+    font-size: 1.5rem;
+    margin: 0;
+}
+
+.header small {
+    display: block;
+    color: #666;
+    font-size: 0.8rem;
 }
 
 .chat-messages {
@@ -49,11 +64,7 @@ body {
     margin-bottom: 10px;
     max-width: 80%;
     animation: fadeIn 0.3s ease-in-out;
-}
-
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
+    position: relative;
 }
 
 .message.user {
@@ -67,14 +78,55 @@ body {
 }
 
 .message.assistant .message-content {
-    background-color: #f0f7ff;
-    border-left: 4px solid #0066cc;
+    background-color: #f8f8f8; /* Fundo cinza bem claro para mensagens do assistente */
     color: #333;
+    border-radius: 12px;
+    border-bottom-left-radius: 0;
 }
 
 .message.user .message-content {
     background-color: #e30613; /* Vermelho CarGlass */
     color: white;
+    text-align: right;
+    border-radius: 12px;
+    border-bottom-right-radius: 0;
+}
+
+/* Badge de iniciais para o assistente */
+.message-avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #666;
+    color: white;
+    font-size: 12px;
+    font-weight: bold;
+    margin-right: 8px;
+}
+
+/* Badge amarelo para o usuário */
+.user-badge {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #fff200; /* Amarelo CarGlass */
+    color: #333;
+    font-size: 12px;
+    font-weight: bold;
+    margin-left: 8px;
+}
+
+/* Timestamp */
+.message-time {
+    font-size: 10px;
+    color: #666;
+    margin-top: 4px;
     text-align: right;
 }
 
@@ -93,6 +145,7 @@ body {
     outline: none;
     font-size: 14px;
     transition: border-color 0.3s;
+    background-color: #f1f1f1; /* Fundo cinza claro para o input */
 }
 
 #user-input:focus {
@@ -110,6 +163,9 @@ button {
     cursor: pointer;
     font-weight: 600;
     transition: background-color 0.3s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 button:hover {
@@ -117,13 +173,15 @@ button:hover {
 }
 
 #reset-button {
-    background-color: #333;
+    background-color: #f1f1f1; /* Cinza claro */
+    color: #666;
 }
 
 #reset-button:hover {
-    background-color: #222;
+    background-color: #e5e5e5;
 }
 
+/* Tag de status Em andamento */
 .status-tag {
     display: inline-block;
     padding: 4px 12px;
@@ -215,6 +273,17 @@ button:hover {
 .step.active .step-label {
     color: #000;
     font-weight: 500;
+}
+
+/* Botão enviar com ícone */
+#send-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#send-button svg {
+    margin-left: 4px;
 }
 
 /* Responsivo para dispositivos móveis */
