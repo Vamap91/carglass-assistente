@@ -1,3 +1,4 @@
+
 from flask import Flask, render_template, request, jsonify
 import random
 import re
@@ -26,575 +27,15 @@ def detect_identifier_type(text):
     clean_text = re.sub(r'[^a-zA-Z0-9]', '', text)
     
     # Verifica CPF (11 dígitos numéricos)
-    if re.match(r'^\d{11}egar o melhor resultado.",
-            f"Seu veículo {cliente_info['dados']['veiculo']['modelo']} está sendo atendido por nossa equipe técnica especializada.",
-            "Temos lojas em São Paulo, Santo André, São Bernardo e Guarulhos. Para mais detalhes ou para mudar o local do seu atendimento, entre em contato com nossa central: 0800-727-2327.",
-            f"A garantia do serviço de {cliente_info['dados']['tipo_servico']} é de 12 meses a partir da data de conclusão."
-        ]
-        return random.choice(fallback_responses)
-
-# Rota da página inicial
-@app.route('/')
-def index():
-    global MENSAGENS
-    
-    # Inicializa as mensagens, se estiverem vazias
-    if not MENSAGENS:
-        MENSAGENS = [{
-            "role": "assistant", 
-            "content": "Olá! Sou Clara, sua assistente virtual da CarGlass. Digite seu CPF, telefone ou placa do veículo para começarmos."
-        }]
-    
-    return render_template('index.html')
-
-# Rota para obter mensagens
-@app.route('/get_messages')
-def get_messages():
-    return jsonify({"messages": MENSAGENS})
-
-# Rota para processar mensagens
-@app.route('/send_message', methods=['POST'])
-def send_message():
-    global MENSAGENS, CLIENTE_IDENTIFICADO, CLIENTE_INFO
-    
-    user_input = request.form.get('message', '')
-    
-    # Adiciona mensagem do usuário
-    MENSAGENS.append({
-        "role": "user", 
-        "content": user_input,
-        "time": "19:26" # Em produção, use: time.strftime("%H:%M")
-    })
-    
-    # Se ainda não identificou o cliente
-    if not CLIENTE_IDENTIFICADO:
-        tipo, valor = detect_identifier_type(user_input)
-        
-        if tipo:
-            client_data = get_client_data(tipo, valor)
-            
-            if client_data.get('sucesso'):
-                # Cliente encontrado
-                CLIENTE_INFO = client_data
-                CLIENTE_IDENTIFICADO = True
-                
-                # Formata status
-                status = client_data['dados']['status']
-                status_tag = f'<span class="status-tag">{status}</span>'
-                
-                # Barra de progresso - Criada uma única vez
-                progress_bar = ''
-                if status == "Em andamento":
-                    progress_bar = '''
-                    <div class="progress-container">
-                        <div class="progress-bar">
-                            <div class="progress-steps">
-                                <div class="step complete">
-                                    <div class="step-node"></div>
-                                    <div class="step-label">Recebido</div>
-                                </div>
-                                <div class="step active">
-                                    <div class="step-node"></div>
-                                    <div class="step-label">Em andamento</div>
-                                </div>
-                                <div class="step">
-                                    <div class="step-node"></div>
-                                    <div class="step-label">Instalação</div>
-                                </div>
-                                <div class="step">
-                                    <div class="step-node"></div>
-                                    <div class="step-label">Inspeção</div>
-                                </div>
-                                <div class="step">
-                                    <div class="step-node"></div>
-                                    <div class="step-label">Concluído</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    '''
-                
-                # Mensagem de resposta com uma única barra de progresso
-                response = f"""
-                Olá {client_data['dados']['nome']}! Encontrei suas informações. Seu atendimento está com status: {status_tag}
-                
-                {progress_bar}
-                
-                Ordem de serviço: {client_data['dados']['ordem']} Serviço: {client_data['dados']['tipo_servico']} Veículo: {client_data['dados']['veiculo']['modelo']} ({client_data['dados']['veiculo']['ano']}) Placa: {client_data['dados']['veiculo']['placa']} Como posso ajudar você hoje?
-                """
-            else:
-                # Cliente não encontrado
-                response = f"""
-                Não consegui encontrar informações com o {tipo} fornecido.
-                
-                Por favor, tente novamente ou use outro identificador.
-                """
-        else:
-            # Formato inválido
-            response = "Por favor, forneça um CPF (11 dígitos), telefone ou placa válida."
-    else:
-        # Cliente já identificado, processa pergunta com IA
-        response = get_ai_response(user_input, CLIENTE_INFO)
-    
-    # Adiciona resposta do assistente
-    MENSAGENS.append({
-        "role": "assistant", 
-        "content": response,
-        "time": "19:25" # Em produção, use: time.strftime("%H:%M")
-    })
-    
-    return jsonify({
-        'messages': MENSAGENS
-    })
-
-# Rota para reiniciar conversa
-@app.route('/reset', methods=['POST'])
-def reset():
-    global MENSAGENS, CLIENTE_IDENTIFICADO, CLIENTE_INFO
-    
-    # Limpa as mensagens
-    MENSAGENS = [{
-        "role": "assistant", 
-        "content": "Olá! Sou Clara, sua assistente virtual da CarGlass. Digite seu CPF, telefone ou placa do veículo para começarmos."
-    }]
-    CLIENTE_IDENTIFICADO = False
-    CLIENTE_INFO = None
-    
-    return jsonify({
-        'messages': MENSAGENS
-    })
-
-if __name__ == '__main__':
-    app.run(debug=True)
-, clean_text):
+    if re.match(r'^\d{11}$', clean_text):
         return "cpf", clean_text
     
     # Verifica telefone
-    elif re.match(r'^\d{10,11}egar o melhor resultado.",
-            f"Seu veículo {cliente_info['dados']['veiculo']['modelo']} está sendo atendido por nossa equipe técnica especializada.",
-            "Temos lojas em São Paulo, Santo André, São Bernardo e Guarulhos. Para mais detalhes ou para mudar o local do seu atendimento, entre em contato com nossa central: 0800-727-2327.",
-            f"A garantia do serviço de {cliente_info['dados']['tipo_servico']} é de 12 meses a partir da data de conclusão."
-        ]
-        return random.choice(fallback_responses)
-
-# Rota da página inicial
-@app.route('/')
-def index():
-    global MENSAGENS
-    
-    # Inicializa as mensagens, se estiverem vazias
-    if not MENSAGENS:
-        MENSAGENS = [{
-            "role": "assistant", 
-            "content": "Olá! Sou Clara, sua assistente virtual da CarGlass. Digite seu CPF, telefone ou placa do veículo para começarmos."
-        }]
-    
-    return render_template('index.html')
-
-# Rota para obter mensagens
-@app.route('/get_messages')
-def get_messages():
-    return jsonify({"messages": MENSAGENS})
-
-# Rota para processar mensagens
-@app.route('/send_message', methods=['POST'])
-def send_message():
-    global MENSAGENS, CLIENTE_IDENTIFICADO, CLIENTE_INFO
-    
-    user_input = request.form.get('message', '')
-    
-    # Adiciona mensagem do usuário
-    MENSAGENS.append({
-        "role": "user", 
-        "content": user_input,
-        "time": "19:26" # Em produção, use: time.strftime("%H:%M")
-    })
-    
-    # Se ainda não identificou o cliente
-    if not CLIENTE_IDENTIFICADO:
-        tipo, valor = detect_identifier_type(user_input)
-        
-        if tipo:
-            client_data = get_client_data(tipo, valor)
-            
-            if client_data.get('sucesso'):
-                # Cliente encontrado
-                CLIENTE_INFO = client_data
-                CLIENTE_IDENTIFICADO = True
-                
-                # Formata status
-                status = client_data['dados']['status']
-                status_tag = f'<span class="status-tag">{status}</span>'
-                
-                # Barra de progresso - Criada uma única vez
-                progress_bar = ''
-                if status == "Em andamento":
-                    progress_bar = '''
-                    <div class="progress-container">
-                        <div class="progress-bar">
-                            <div class="progress-steps">
-                                <div class="step complete">
-                                    <div class="step-node"></div>
-                                    <div class="step-label">Recebido</div>
-                                </div>
-                                <div class="step active">
-                                    <div class="step-node"></div>
-                                    <div class="step-label">Em andamento</div>
-                                </div>
-                                <div class="step">
-                                    <div class="step-node"></div>
-                                    <div class="step-label">Instalação</div>
-                                </div>
-                                <div class="step">
-                                    <div class="step-node"></div>
-                                    <div class="step-label">Inspeção</div>
-                                </div>
-                                <div class="step">
-                                    <div class="step-node"></div>
-                                    <div class="step-label">Concluído</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    '''
-                
-                # Mensagem de resposta com uma única barra de progresso
-                response = f"""
-                Olá {client_data['dados']['nome']}! Encontrei suas informações. Seu atendimento está com status: {status_tag}
-                
-                {progress_bar}
-                
-                Ordem de serviço: {client_data['dados']['ordem']} Serviço: {client_data['dados']['tipo_servico']} Veículo: {client_data['dados']['veiculo']['modelo']} ({client_data['dados']['veiculo']['ano']}) Placa: {client_data['dados']['veiculo']['placa']} Como posso ajudar você hoje?
-                """
-            else:
-                # Cliente não encontrado
-                response = f"""
-                Não consegui encontrar informações com o {tipo} fornecido.
-                
-                Por favor, tente novamente ou use outro identificador.
-                """
-        else:
-            # Formato inválido
-            response = "Por favor, forneça um CPF (11 dígitos), telefone ou placa válida."
-    else:
-        # Cliente já identificado, processa pergunta com IA
-        response = get_ai_response(user_input, CLIENTE_INFO)
-    
-    # Adiciona resposta do assistente
-    MENSAGENS.append({
-        "role": "assistant", 
-        "content": response,
-        "time": "19:25" # Em produção, use: time.strftime("%H:%M")
-    })
-    
-    return jsonify({
-        'messages': MENSAGENS
-    })
-
-# Rota para reiniciar conversa
-@app.route('/reset', methods=['POST'])
-def reset():
-    global MENSAGENS, CLIENTE_IDENTIFICADO, CLIENTE_INFO
-    
-    # Limpa as mensagens
-    MENSAGENS = [{
-        "role": "assistant", 
-        "content": "Olá! Sou Clara, sua assistente virtual da CarGlass. Digite seu CPF, telefone ou placa do veículo para começarmos."
-    }]
-    CLIENTE_IDENTIFICADO = False
-    CLIENTE_INFO = None
-    
-    return jsonify({
-        'messages': MENSAGENS
-    })
-
-if __name__ == '__main__':
-    app.run(debug=True)
-, clean_text):
+    elif re.match(r'^\d{10,11}$', clean_text):
         return "telefone", clean_text
     
     # Verifica placa
-    elif re.match(r'^[A-Za-z]{3}\d{4}egar o melhor resultado.",
-            f"Seu veículo {cliente_info['dados']['veiculo']['modelo']} está sendo atendido por nossa equipe técnica especializada.",
-            "Temos lojas em São Paulo, Santo André, São Bernardo e Guarulhos. Para mais detalhes ou para mudar o local do seu atendimento, entre em contato com nossa central: 0800-727-2327.",
-            f"A garantia do serviço de {cliente_info['dados']['tipo_servico']} é de 12 meses a partir da data de conclusão."
-        ]
-        return random.choice(fallback_responses)
-
-# Rota da página inicial
-@app.route('/')
-def index():
-    global MENSAGENS
-    
-    # Inicializa as mensagens, se estiverem vazias
-    if not MENSAGENS:
-        MENSAGENS = [{
-            "role": "assistant", 
-            "content": "Olá! Sou Clara, sua assistente virtual da CarGlass. Digite seu CPF, telefone ou placa do veículo para começarmos."
-        }]
-    
-    return render_template('index.html')
-
-# Rota para obter mensagens
-@app.route('/get_messages')
-def get_messages():
-    return jsonify({"messages": MENSAGENS})
-
-# Rota para processar mensagens
-@app.route('/send_message', methods=['POST'])
-def send_message():
-    global MENSAGENS, CLIENTE_IDENTIFICADO, CLIENTE_INFO
-    
-    user_input = request.form.get('message', '')
-    
-    # Adiciona mensagem do usuário
-    MENSAGENS.append({
-        "role": "user", 
-        "content": user_input,
-        "time": "19:26" # Em produção, use: time.strftime("%H:%M")
-    })
-    
-    # Se ainda não identificou o cliente
-    if not CLIENTE_IDENTIFICADO:
-        tipo, valor = detect_identifier_type(user_input)
-        
-        if tipo:
-            client_data = get_client_data(tipo, valor)
-            
-            if client_data.get('sucesso'):
-                # Cliente encontrado
-                CLIENTE_INFO = client_data
-                CLIENTE_IDENTIFICADO = True
-                
-                # Formata status
-                status = client_data['dados']['status']
-                status_tag = f'<span class="status-tag">{status}</span>'
-                
-                # Barra de progresso - Criada uma única vez
-                progress_bar = ''
-                if status == "Em andamento":
-                    progress_bar = '''
-                    <div class="progress-container">
-                        <div class="progress-bar">
-                            <div class="progress-steps">
-                                <div class="step complete">
-                                    <div class="step-node"></div>
-                                    <div class="step-label">Recebido</div>
-                                </div>
-                                <div class="step active">
-                                    <div class="step-node"></div>
-                                    <div class="step-label">Em andamento</div>
-                                </div>
-                                <div class="step">
-                                    <div class="step-node"></div>
-                                    <div class="step-label">Instalação</div>
-                                </div>
-                                <div class="step">
-                                    <div class="step-node"></div>
-                                    <div class="step-label">Inspeção</div>
-                                </div>
-                                <div class="step">
-                                    <div class="step-node"></div>
-                                    <div class="step-label">Concluído</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    '''
-                
-                # Mensagem de resposta com uma única barra de progresso
-                response = f"""
-                Olá {client_data['dados']['nome']}! Encontrei suas informações. Seu atendimento está com status: {status_tag}
-                
-                {progress_bar}
-                
-                Ordem de serviço: {client_data['dados']['ordem']} Serviço: {client_data['dados']['tipo_servico']} Veículo: {client_data['dados']['veiculo']['modelo']} ({client_data['dados']['veiculo']['ano']}) Placa: {client_data['dados']['veiculo']['placa']} Como posso ajudar você hoje?
-                """
-            else:
-                # Cliente não encontrado
-                response = f"""
-                Não consegui encontrar informações com o {tipo} fornecido.
-                
-                Por favor, tente novamente ou use outro identificador.
-                """
-        else:
-            # Formato inválido
-            response = "Por favor, forneça um CPF (11 dígitos), telefone ou placa válida."
-    else:
-        # Cliente já identificado, processa pergunta com IA
-        response = get_ai_response(user_input, CLIENTE_INFO)
-    
-    # Adiciona resposta do assistente
-    MENSAGENS.append({
-        "role": "assistant", 
-        "content": response,
-        "time": "19:25" # Em produção, use: time.strftime("%H:%M")
-    })
-    
-    return jsonify({
-        'messages': MENSAGENS
-    })
-
-# Rota para reiniciar conversa
-@app.route('/reset', methods=['POST'])
-def reset():
-    global MENSAGENS, CLIENTE_IDENTIFICADO, CLIENTE_INFO
-    
-    # Limpa as mensagens
-    MENSAGENS = [{
-        "role": "assistant", 
-        "content": "Olá! Sou Clara, sua assistente virtual da CarGlass. Digite seu CPF, telefone ou placa do veículo para começarmos."
-    }]
-    CLIENTE_IDENTIFICADO = False
-    CLIENTE_INFO = None
-    
-    return jsonify({
-        'messages': MENSAGENS
-    })
-
-if __name__ == '__main__':
-    app.run(debug=True)
-, clean_text) or re.match(r'^[A-Za-z]{3}\d[A-Za-z]\d{2}egar o melhor resultado.",
-            f"Seu veículo {cliente_info['dados']['veiculo']['modelo']} está sendo atendido por nossa equipe técnica especializada.",
-            "Temos lojas em São Paulo, Santo André, São Bernardo e Guarulhos. Para mais detalhes ou para mudar o local do seu atendimento, entre em contato com nossa central: 0800-727-2327.",
-            f"A garantia do serviço de {cliente_info['dados']['tipo_servico']} é de 12 meses a partir da data de conclusão."
-        ]
-        return random.choice(fallback_responses)
-
-# Rota da página inicial
-@app.route('/')
-def index():
-    global MENSAGENS
-    
-    # Inicializa as mensagens, se estiverem vazias
-    if not MENSAGENS:
-        MENSAGENS = [{
-            "role": "assistant", 
-            "content": "Olá! Sou Clara, sua assistente virtual da CarGlass. Digite seu CPF, telefone ou placa do veículo para começarmos."
-        }]
-    
-    return render_template('index.html')
-
-# Rota para obter mensagens
-@app.route('/get_messages')
-def get_messages():
-    return jsonify({"messages": MENSAGENS})
-
-# Rota para processar mensagens
-@app.route('/send_message', methods=['POST'])
-def send_message():
-    global MENSAGENS, CLIENTE_IDENTIFICADO, CLIENTE_INFO
-    
-    user_input = request.form.get('message', '')
-    
-    # Adiciona mensagem do usuário
-    MENSAGENS.append({
-        "role": "user", 
-        "content": user_input,
-        "time": "19:26" # Em produção, use: time.strftime("%H:%M")
-    })
-    
-    # Se ainda não identificou o cliente
-    if not CLIENTE_IDENTIFICADO:
-        tipo, valor = detect_identifier_type(user_input)
-        
-        if tipo:
-            client_data = get_client_data(tipo, valor)
-            
-            if client_data.get('sucesso'):
-                # Cliente encontrado
-                CLIENTE_INFO = client_data
-                CLIENTE_IDENTIFICADO = True
-                
-                # Formata status
-                status = client_data['dados']['status']
-                status_tag = f'<span class="status-tag">{status}</span>'
-                
-                # Barra de progresso - Criada uma única vez
-                progress_bar = ''
-                if status == "Em andamento":
-                    progress_bar = '''
-                    <div class="progress-container">
-                        <div class="progress-bar">
-                            <div class="progress-steps">
-                                <div class="step complete">
-                                    <div class="step-node"></div>
-                                    <div class="step-label">Recebido</div>
-                                </div>
-                                <div class="step active">
-                                    <div class="step-node"></div>
-                                    <div class="step-label">Em andamento</div>
-                                </div>
-                                <div class="step">
-                                    <div class="step-node"></div>
-                                    <div class="step-label">Instalação</div>
-                                </div>
-                                <div class="step">
-                                    <div class="step-node"></div>
-                                    <div class="step-label">Inspeção</div>
-                                </div>
-                                <div class="step">
-                                    <div class="step-node"></div>
-                                    <div class="step-label">Concluído</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    '''
-                
-                # Mensagem de resposta com uma única barra de progresso
-                response = f"""
-                Olá {client_data['dados']['nome']}! Encontrei suas informações. Seu atendimento está com status: {status_tag}
-                
-                {progress_bar}
-                
-                Ordem de serviço: {client_data['dados']['ordem']} Serviço: {client_data['dados']['tipo_servico']} Veículo: {client_data['dados']['veiculo']['modelo']} ({client_data['dados']['veiculo']['ano']}) Placa: {client_data['dados']['veiculo']['placa']} Como posso ajudar você hoje?
-                """
-            else:
-                # Cliente não encontrado
-                response = f"""
-                Não consegui encontrar informações com o {tipo} fornecido.
-                
-                Por favor, tente novamente ou use outro identificador.
-                """
-        else:
-            # Formato inválido
-            response = "Por favor, forneça um CPF (11 dígitos), telefone ou placa válida."
-    else:
-        # Cliente já identificado, processa pergunta com IA
-        response = get_ai_response(user_input, CLIENTE_INFO)
-    
-    # Adiciona resposta do assistente
-    MENSAGENS.append({
-        "role": "assistant", 
-        "content": response,
-        "time": "19:25" # Em produção, use: time.strftime("%H:%M")
-    })
-    
-    return jsonify({
-        'messages': MENSAGENS
-    })
-
-# Rota para reiniciar conversa
-@app.route('/reset', methods=['POST'])
-def reset():
-    global MENSAGENS, CLIENTE_IDENTIFICADO, CLIENTE_INFO
-    
-    # Limpa as mensagens
-    MENSAGENS = [{
-        "role": "assistant", 
-        "content": "Olá! Sou Clara, sua assistente virtual da CarGlass. Digite seu CPF, telefone ou placa do veículo para começarmos."
-    }]
-    CLIENTE_IDENTIFICADO = False
-    CLIENTE_INFO = None
-    
-    return jsonify({
-        'messages': MENSAGENS
-    })
-
-if __name__ == '__main__':
-    app.run(debug=True)
-, clean_text):
+    elif re.match(r'^[A-Za-z]{3}\d{4}$', clean_text) or re.match(r'^[A-Za-z]{3}\d[A-Za-z]\d{2}$', clean_text):
         return "placa", clean_text.upper()
     
     # Não identificado
@@ -700,7 +141,7 @@ def get_ai_response(pergunta, cliente_info):
         print(f"Erro ao chamar a API OpenAI: {e}")
         # Respostas de fallback em caso de erro na API
         fallback_responses = [
-            f"Olá! Seu serviço de {cliente_info['dados']['tipo_servico']} está em andamento. Nossa equipe está trabalhando para entregar o melhor resultado.",
+            f"Seu serviço de {cliente_info['dados']['tipo_servico']} está em andamento. Nossa equipe está trabalhando para entregar o melhor resultado.",
             f"Seu veículo {cliente_info['dados']['veiculo']['modelo']} está sendo atendido por nossa equipe técnica especializada.",
             "Temos lojas em São Paulo, Santo André, São Bernardo e Guarulhos. Para mais detalhes ou para mudar o local do seu atendimento, entre em contato com nossa central: 0800-727-2327.",
             f"A garantia do serviço de {cliente_info['dados']['tipo_servico']} é de 12 meses a partir da data de conclusão."
@@ -717,7 +158,7 @@ def index():
         MENSAGENS = [{
             "role": "assistant", 
             "content": "Olá! Sou Clara, sua assistente virtual da CarGlass. Digite seu CPF, telefone ou placa do veículo para começarmos.",
-            "time": "19:25"  # Em produção, use: time.strftime("%H:%M")
+            "time": "08:54"
         }]
     
     return render_template('index.html')
@@ -733,12 +174,13 @@ def send_message():
     global MENSAGENS, CLIENTE_IDENTIFICADO, CLIENTE_INFO
     
     user_input = request.form.get('message', '')
+    current_time = time.strftime("%H:%M")
     
     # Adiciona mensagem do usuário
     MENSAGENS.append({
         "role": "user", 
         "content": user_input,
-        "time": "19:26" # Em produção, use: time.strftime("%H:%M")
+        "time": current_time
     })
     
     # Se ainda não identificou o cliente
@@ -757,11 +199,11 @@ def send_message():
                 status = client_data['dados']['status']
                 status_tag = f'<span class="status-tag">{status}</span>'
                 
-                # Barra de progresso - Criada uma única vez
+                # Barra de progresso - Apenas uma barra
                 progress_bar = ''
                 if status == "Em andamento":
                     progress_bar = '''
-                    <div class="progress-container">
+                    <div class="progress-single-container">
                         <div class="progress-bar">
                             <div class="progress-steps">
                                 <div class="step complete">
@@ -795,7 +237,12 @@ def send_message():
                 
                 {progress_bar}
                 
-                Ordem de serviço: {client_data['dados']['ordem']} Serviço: {client_data['dados']['tipo_servico']} Veículo: {client_data['dados']['veiculo']['modelo']} ({client_data['dados']['veiculo']['ano']}) Placa: {client_data['dados']['veiculo']['placa']} Como posso ajudar você hoje?
+                Ordem de serviço: {client_data['dados']['ordem']} 
+                Serviço: {client_data['dados']['tipo_servico']} 
+                Veículo: {client_data['dados']['veiculo']['modelo']} ({client_data['dados']['veiculo']['ano']}) 
+                Placa: {client_data['dados']['veiculo']['placa']} 
+                
+                Como posso ajudar você hoje?
                 """
             else:
                 # Cliente não encontrado
@@ -815,7 +262,7 @@ def send_message():
     MENSAGENS.append({
         "role": "assistant", 
         "content": response,
-        "time": "19:25" # Em produção, use: time.strftime("%H:%M")
+        "time": current_time
     })
     
     return jsonify({
@@ -826,151 +273,14 @@ def send_message():
 @app.route('/reset', methods=['POST'])
 def reset():
     global MENSAGENS, CLIENTE_IDENTIFICADO, CLIENTE_INFO
+    
+    current_time = time.strftime("%H:%M")
     
     # Limpa as mensagens
     MENSAGENS = [{
         "role": "assistant", 
         "content": "Olá! Sou Clara, sua assistente virtual da CarGlass. Digite seu CPF, telefone ou placa do veículo para começarmos.",
-        "time": "19:25" # Em produção, use: time.strftime("%H:%M")
-    }]
-    CLIENTE_IDENTIFICADO = False
-    CLIENTE_INFO = None
-    
-    return jsonify({
-        'messages': MENSAGENS
-    })
-
-if __name__ == '__main__':
-    app.run(debug=True)egar o melhor resultado.",
-            f"Seu veículo {cliente_info['dados']['veiculo']['modelo']} está sendo atendido por nossa equipe técnica especializada.",
-            "Temos lojas em São Paulo, Santo André, São Bernardo e Guarulhos. Para mais detalhes ou para mudar o local do seu atendimento, entre em contato com nossa central: 0800-727-2327.",
-            f"A garantia do serviço de {cliente_info['dados']['tipo_servico']} é de 12 meses a partir da data de conclusão."
-        ]
-        return random.choice(fallback_responses)
-
-# Rota da página inicial
-@app.route('/')
-def index():
-    global MENSAGENS
-    
-    # Inicializa as mensagens, se estiverem vazias
-    if not MENSAGENS:
-        MENSAGENS = [{
-            "role": "assistant", 
-            "content": "Olá! Sou Clara, sua assistente virtual da CarGlass. Digite seu CPF, telefone ou placa do veículo para começarmos."
-        }]
-    
-    return render_template('index.html')
-
-# Rota para obter mensagens
-@app.route('/get_messages')
-def get_messages():
-    return jsonify({"messages": MENSAGENS})
-
-# Rota para processar mensagens
-@app.route('/send_message', methods=['POST'])
-def send_message():
-    global MENSAGENS, CLIENTE_IDENTIFICADO, CLIENTE_INFO
-    
-    user_input = request.form.get('message', '')
-    
-    # Adiciona mensagem do usuário
-    MENSAGENS.append({
-        "role": "user", 
-        "content": user_input,
-        "time": "19:26" # Em produção, use: time.strftime("%H:%M")
-    })
-    
-    # Se ainda não identificou o cliente
-    if not CLIENTE_IDENTIFICADO:
-        tipo, valor = detect_identifier_type(user_input)
-        
-        if tipo:
-            client_data = get_client_data(tipo, valor)
-            
-            if client_data.get('sucesso'):
-                # Cliente encontrado
-                CLIENTE_INFO = client_data
-                CLIENTE_IDENTIFICADO = True
-                
-                # Formata status
-                status = client_data['dados']['status']
-                status_tag = f'<span class="status-tag">{status}</span>'
-                
-                # Barra de progresso - Criada uma única vez
-                progress_bar = ''
-                if status == "Em andamento":
-                    progress_bar = '''
-                    <div class="progress-container">
-                        <div class="progress-bar">
-                            <div class="progress-steps">
-                                <div class="step complete">
-                                    <div class="step-node"></div>
-                                    <div class="step-label">Recebido</div>
-                                </div>
-                                <div class="step active">
-                                    <div class="step-node"></div>
-                                    <div class="step-label">Em andamento</div>
-                                </div>
-                                <div class="step">
-                                    <div class="step-node"></div>
-                                    <div class="step-label">Instalação</div>
-                                </div>
-                                <div class="step">
-                                    <div class="step-node"></div>
-                                    <div class="step-label">Inspeção</div>
-                                </div>
-                                <div class="step">
-                                    <div class="step-node"></div>
-                                    <div class="step-label">Concluído</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    '''
-                
-                # Mensagem de resposta com uma única barra de progresso
-                response = f"""
-                Olá {client_data['dados']['nome']}! Encontrei suas informações. Seu atendimento está com status: {status_tag}
-                
-                {progress_bar}
-                
-                Ordem de serviço: {client_data['dados']['ordem']} Serviço: {client_data['dados']['tipo_servico']} Veículo: {client_data['dados']['veiculo']['modelo']} ({client_data['dados']['veiculo']['ano']}) Placa: {client_data['dados']['veiculo']['placa']} Como posso ajudar você hoje?
-                """
-            else:
-                # Cliente não encontrado
-                response = f"""
-                Não consegui encontrar informações com o {tipo} fornecido.
-                
-                Por favor, tente novamente ou use outro identificador.
-                """
-        else:
-            # Formato inválido
-            response = "Por favor, forneça um CPF (11 dígitos), telefone ou placa válida."
-    else:
-        # Cliente já identificado, processa pergunta com IA
-        response = get_ai_response(user_input, CLIENTE_INFO)
-    
-    # Adiciona resposta do assistente
-    MENSAGENS.append({
-        "role": "assistant", 
-        "content": response,
-        "time": "19:25" # Em produção, use: time.strftime("%H:%M")
-    })
-    
-    return jsonify({
-        'messages': MENSAGENS
-    })
-
-# Rota para reiniciar conversa
-@app.route('/reset', methods=['POST'])
-def reset():
-    global MENSAGENS, CLIENTE_IDENTIFICADO, CLIENTE_INFO
-    
-    # Limpa as mensagens
-    MENSAGENS = [{
-        "role": "assistant", 
-        "content": "Olá! Sou Clara, sua assistente virtual da CarGlass. Digite seu CPF, telefone ou placa do veículo para começarmos."
+        "time": current_time
     }]
     CLIENTE_IDENTIFICADO = False
     CLIENTE_INFO = None
