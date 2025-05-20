@@ -634,12 +634,13 @@ def api_test():
     Rota para testar a conexão com a API
     Acesse /api_test?tipo=cpf&valor=12345678900 para testar
     """
+    global USE_REAL_API  # Movida para o início da função
+    
     tipo = request.args.get('tipo', 'cpf')
     valor = request.args.get('valor', '12345678900')
     
     # Força uso da API real para este teste
     old_setting = USE_REAL_API
-    global USE_REAL_API
     USE_REAL_API = True
     
     result = get_client_data(tipo, valor)
