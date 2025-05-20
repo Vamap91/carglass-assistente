@@ -73,7 +73,7 @@ body {
 }
 
 .message.user .message-content {
-    background-color: #0066cc;
+    background-color: #e30613; /* Vermelho CarGlass */
     color: white;
     text-align: right;
 }
@@ -96,14 +96,14 @@ body {
 }
 
 #user-input:focus {
-    border-color: #0066cc;
-    box-shadow: 0 0 0 2px rgba(0, 102, 204, 0.2);
+    border-color: #e30613; /* Vermelho CarGlass */
+    box-shadow: 0 0 0 2px rgba(227, 6, 19, 0.2);
 }
 
 button {
     padding: 12px 20px;
     margin-left: 8px;
-    background-color: #0066cc;
+    background-color: #e30613; /* Vermelho CarGlass */
     color: white;
     border: none;
     border-radius: 30px;
@@ -113,15 +113,15 @@ button {
 }
 
 button:hover {
-    background-color: #0052a3;
+    background-color: #c00511; /* Vermelho CarGlass mais escuro */
 }
 
 #reset-button {
-    background-color: #f97316;
+    background-color: #333;
 }
 
 #reset-button:hover {
-    background-color: #ea580c;
+    background-color: #222;
 }
 
 .status-tag {
@@ -130,8 +130,8 @@ button:hover {
     border-radius: 30px;
     font-size: 12px;
     font-weight: 600;
-    background-color: #ffedd5;
-    color: #c2410c;
+    background-color: #fff200; /* Amarelo CarGlass */
+    color: #333;
     margin: 5px 0;
 }
 
@@ -144,7 +144,7 @@ button:hover {
     background-color: white;
 }
 
-/* Barra de progresso */
+/* Barra de progresso - com cores CarGlass */
 .progress-container {
     margin: 15px 0;
     width: 100%;
@@ -177,7 +177,7 @@ button:hover {
     position: absolute;
     height: 2px;
     width: 30%;
-    background-color: #fde047; /* Amarelo */
+    background-color: #fff200; /* Amarelo CarGlass */
     top: 50%;
     left: 0;
     transform: translateY(-50%);
@@ -208,7 +208,7 @@ button:hover {
 
 .step.complete .step-node,
 .step.active .step-node {
-    background-color: #fde047; /* Amarelo */
+    background-color: #fff200; /* Amarelo CarGlass */
 }
 
 .step.complete .step-label,
