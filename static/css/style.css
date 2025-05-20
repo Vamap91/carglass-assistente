@@ -1,96 +1,38 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Montserrat:wght@400;500;600;700&display=swap');
-
-:root {
-    --carglass-red: #e30613;
-    --carglass-yellow: #ffdd00;
-    --carglass-dark: #333333;
-    --carglass-gray: #f5f5f5;
-    --carglass-light: #ffffff;
-    --shadow-soft: 0 4px 15px rgba(0, 0, 0, 0.1);
-    --shadow-medium: 0 6px 24px rgba(0, 0, 0, 0.15);
-    --border-radius: 12px;
-    --transition-normal: all 0.3s ease;
-}
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
 * {
-    font-family: 'Montserrat', 'Inter', sans-serif;
+    font-family: 'Inter', sans-serif;
     box-sizing: border-box;
     margin: 0;
     padding: 0;
 }
 
 body {
-    background-color: var(--carglass-gray);
+    background-color: #f5f7fa;
     padding: 20px;
     height: 100vh;
     display: flex;
     align-items: center;
     justify-content: center;
-    background-image: linear-gradient(45deg, rgba(255, 221, 0, 0.1) 0%, rgba(227, 6, 19, 0.1) 100%);
 }
 
 .chat-container {
     width: 100%;
     max-width: 800px;
-    background-color: var(--carglass-light);
-    border-radius: var(--border-radius);
-    box-shadow: var(--shadow-medium);
+    background-color: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
     overflow: hidden;
     display: flex;
     flex-direction: column;
     height: 90vh;
-    border: 1px solid rgba(227, 6, 19, 0.2);
 }
 
 .header {
-    display: flex;
-    align-items: center;
-    padding: 15px 20px;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    text-align: center;
+    padding: 15px;
+    border-bottom: 1px solid #eee;
     background-color: white;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
-}
-
-.header-logo {
-    height: 40px;
-    margin-right: 15px;
-}
-
-.header-title {
-    flex: 1;
-}
-
-.header-title h1 {
-    font-size: 18px;
-    font-weight: 600;
-    color: var(--carglass-red);
-    margin: 0;
-}
-
-.header-title p {
-    font-size: 13px;
-    color: var(--carglass-dark);
-    opacity: 0.7;
-    margin: 0;
-}
-
-.header-avatar {
-    width: 44px;
-    height: 44px;
-    border-radius: 50%;
-    background-color: var(--carglass-gray);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-left: 15px;
-    border: 2px solid var(--carglass-yellow);
-    overflow: hidden;
-}
-
-.header-avatar img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
 }
 
 .chat-messages {
@@ -100,13 +42,6 @@ body {
     display: flex;
     flex-direction: column;
     gap: 15px;
-    background-image: linear-gradient(to bottom, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.8)), 
-                      url('https://www.carglass.com.br/wp-content/uploads/2023/02/logoCarglass.png');
-    background-repeat: repeat;
-    background-size: 200px;
-    background-position: center;
-    background-blend-mode: overlay;
-    backdrop-filter: blur(5px);
 }
 
 .message {
@@ -114,7 +49,6 @@ body {
     margin-bottom: 10px;
     max-width: 80%;
     animation: fadeIn 0.3s ease-in-out;
-    position: relative;
 }
 
 @keyframes fadeIn {
@@ -126,152 +60,68 @@ body {
     align-self: flex-end;
 }
 
-.message-avatar {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    background-color: var(--carglass-gray);
-    margin-right: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: bold;
-    color: var(--carglass-dark);
-    font-size: 14px;
-    align-self: flex-end;
-}
-
-.message.user .message-avatar {
-    order: 2;
-    margin-right: 0;
-    margin-left: 10px;
-    background-color: var(--carglass-yellow);
-}
-
 .message-content {
     padding: 12px 16px;
-    border-radius: 18px;
-    box-shadow: var(--shadow-soft);
-    position: relative;
+    border-radius: 12px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
 }
 
 .message.assistant .message-content {
-    background-color: white;
-    border: 1px solid rgba(227, 6, 19, 0.2);
-    border-bottom-left-radius: 4px;
-    color: var(--carglass-dark);
+    background-color: #f0f7ff;
+    border-left: 4px solid #0066cc;
+    color: #333;
 }
 
 .message.user .message-content {
-    background-color: var(--carglass-red);
+    background-color: #0066cc;
     color: white;
     text-align: right;
-    border-bottom-right-radius: 4px;
-}
-
-.message-time {
-    font-size: 10px;
-    color: rgba(0, 0, 0, 0.4);
-    margin-top: 5px;
-    text-align: right;
-}
-
-.message.user .message-time {
-    color: rgba(255, 255, 255, 0.7);
-}
-
-.message.typing .message-content {
-    display: flex;
-    align-items: center;
-    padding: 12px 20px;
-}
-
-.typing-indicator {
-    display: flex;
-    align-items: center;
-}
-
-.typing-indicator span {
-    height: 8px;
-    width: 8px;
-    margin: 0 1px;
-    background-color: #9E9EA1;
-    display: block;
-    border-radius: 50%;
-    opacity: 0.4;
-}
-
-.typing-indicator span:nth-of-type(1) {
-    animation: 1s blink infinite 0.3333s;
-}
-
-.typing-indicator span:nth-of-type(2) {
-    animation: 1s blink infinite 0.6666s;
-}
-
-.typing-indicator span:nth-of-type(3) {
-    animation: 1s blink infinite 0.9999s;
-}
-
-@keyframes blink {
-    50% { opacity: 1; }
 }
 
 .input-container {
     display: flex;
     padding: 15px;
-    border-top: 1px solid rgba(0, 0, 0, 0.05);
+    border-top: 1px solid #eee;
     background-color: white;
 }
 
 #user-input {
     flex-grow: 1;
     padding: 12px 16px;
-    border: 1px solid rgba(0, 0, 0, 0.1);
-    border-radius: 24px;
+    border: 1px solid #ddd;
+    border-radius: 30px;
     outline: none;
     font-size: 14px;
-    transition: var(--transition-normal);
-    background-color: var(--carglass-gray);
+    transition: border-color 0.3s;
 }
 
 #user-input:focus {
-    border-color: var(--carglass-yellow);
-    box-shadow: 0 0 0 2px rgba(255, 221, 0, 0.2);
-    background-color: white;
+    border-color: #0066cc;
+    box-shadow: 0 0 0 2px rgba(0, 102, 204, 0.2);
 }
 
 button {
     padding: 12px 20px;
     margin-left: 8px;
-    background-color: var(--carglass-red);
+    background-color: #0066cc;
     color: white;
     border: none;
-    border-radius: 24px;
+    border-radius: 30px;
     cursor: pointer;
     font-weight: 600;
-    transition: var(--transition-normal);
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    transition: background-color 0.3s;
 }
 
 button:hover {
-    background-color: #c5050f;
-    transform: translateY(-2px);
-}
-
-button:active {
-    transform: translateY(0);
+    background-color: #0052a3;
 }
 
 #reset-button {
-    background-color: rgba(227, 6, 19, 0.1);
-    color: var(--carglass-red);
+    background-color: #f97316;
 }
 
 #reset-button:hover {
-    background-color: rgba(227, 6, 19, 0.2);
+    background-color: #ea580c;
 }
 
 .status-tag {
@@ -280,62 +130,91 @@ button:active {
     border-radius: 30px;
     font-size: 12px;
     font-weight: 600;
-    margin: 5px 0;
-}
-
-.status-tag.agendado {
-    background-color: #dbeafe;
-    color: #1e40af;
-}
-
-.status-tag.em-andamento {
     background-color: #ffedd5;
-    color: #9a3412;
-}
-
-.status-tag.concluido {
-    background-color: #d1fae5;
-    color: #065f46;
-}
-
-.status-tag.aguardando {
-    background-color: #fef3c7;
-    color: #92400e;
+    color: #c2410c;
+    margin: 5px 0;
 }
 
 .footer {
     text-align: center;
     padding: 15px;
-    border-top: 1px solid rgba(0, 0, 0, 0.05);
+    border-top: 1px solid #eee;
     font-size: 12px;
-    color: var(--carglass-dark);
+    color: #666;
     background-color: white;
+}
+
+/* Barra de progresso */
+.progress-container {
+    margin: 15px 0;
+    width: 100%;
+}
+
+.progress-bar {
+    width: 100%;
+    position: relative;
+}
+
+.progress-steps {
+    display: flex;
+    justify-content: space-between;
+    position: relative;
+}
+
+.progress-steps::before {
+    content: '';
+    position: absolute;
+    height: 2px;
+    width: 100%;
+    background-color: #e5e7eb;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 1;
+}
+
+.progress-steps::after {
+    content: '';
+    position: absolute;
+    height: 2px;
+    width: 30%;
+    background-color: #fde047; /* Amarelo */
+    top: 50%;
+    left: 0;
+    transform: translateY(-50%);
+    z-index: 1;
+    transition: width 0.5s ease;
+}
+
+.step {
     display: flex;
     flex-direction: column;
-    gap: 5px;
+    align-items: center;
+    position: relative;
+    z-index: 2;
 }
 
-.footer img {
-    height: 20px;
-    margin-bottom: 5px;
+.step-node {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background-color: #e5e7eb;
+    margin-bottom: 4px;
 }
 
-.footer-links {
-    display: flex;
-    justify-content: center;
-    gap: 15px;
-    margin-top: 5px;
+.step-label {
+    font-size: 10px;
+    color: #6b7280;
 }
 
-.footer-links a {
-    color: var(--carglass-red);
-    text-decoration: none;
+.step.complete .step-node,
+.step.active .step-node {
+    background-color: #fde047; /* Amarelo */
+}
+
+.step.complete .step-label,
+.step.active .step-label {
+    color: #000;
     font-weight: 500;
-    font-size: 11px;
-}
-
-.footer-links a:hover {
-    text-decoration: underline;
 }
 
 /* Responsivo para dispositivos móveis */
@@ -355,10 +234,6 @@ button:active {
         max-width: 90%;
     }
     
-    .header-title h1 {
-        font-size: 16px;
-    }
-    
     .input-container {
         padding: 10px;
     }
@@ -371,157 +246,12 @@ button:active {
         padding: 10px 15px;
         font-size: 14px;
     }
+
+    .progress-container {
+        margin: 10px 0;
+    }
     
-    .footer {
-        padding: 10px;
+    .step-label {
+        font-size: 8px;
     }
 }
-
-/* Animações */
-.pulse {
-    animation: pulse 2s infinite;
-}
-
-@keyframes pulse {
-    0% {
-        box-shadow: 0 0 0 0 rgba(255, 221, 0, 0.7);
-    }
-    70% {
-        box-shadow: 0 0 0 10px rgba(255, 221, 0, 0);
-    }
-    100% {
-        box-shadow: 0 0 0 0 rgba(255, 221, 0, 0);
-    }
-}
-
-/* Escalonamento */
-.escalation-container {
-    background-color: rgba(227, 6, 19, 0.05);
-    border: 1px dashed var(--carglass-red);
-    border-radius: var(--border-radius);
-    padding: 15px;
-    margin: 10px 0;
-}
-
-.escalation-header {
-    display: flex;
-    align-items: center;
-    margin-bottom: 10px;
-    color: var(--carglass-red);
-    font-weight: 600;
-}
-
-.escalation-header svg {
-    margin-right: 8px;
-}
-
-.escalation-details {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.escalation-detail {
-    display: flex;
-    font-size: 13px;
-}
-
-.escalation-label {
-    font-weight: 500;
-    width: 100px;
-    color: var(--carglass-dark);
-}
-
-.escalation-value {
-    font-weight: 600;
-}
-
-/* Estilização específica para elementos nos status */
-.service-progress {
-    margin: 10px 0;
-    background-color: #f0f0f0;
-    height: 8px;
-    border-radius: 4px;
-    overflow: hidden;
-}
-
-.service-progress-bar {
-    height: 100%;
-    background-color: var(--carglass-yellow);
-    width: 0;
-    transition: width 1s ease;
-}
-
-.service-stages {
-    display: flex;
-    justify-content: space-between;
-    margin: 5px 0 15px;
-    position: relative;
-}
-
-.service-stage {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    position: relative;
-    width: 20%;
-}
-
-.service-stage-dot {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background-color: #d4d4d4;
-    margin-bottom: 5px;
-    z-index: 1;
-}
-
-.service-stage-label {
-    font-size: 10px;
-    text-align: center;
-    color: #666;
-}
-
-.service-stage.active .service-stage-dot {
-    background-color: var(--carglass-red);
-    box-shadow: 0 0 0 3px rgba(227, 6, 19, 0.2);
-}
-
-.service-stage.active .service-stage-label {
-    color: var(--carglass-dark);
-    font-weight: 600;
-}
-
-.service-stage.completed .service-stage-dot {
-    background-color: var(--carglass-yellow);
-}
-
-.service-stage-line {
-    position: absolute;
-    top: 6px;
-    left: 0;
-    right: 0;
-    height: 2px;
-    background-color: #d4d4d4;
-    z-index: 0;
-}
-
-/* Estilos para links na conversa */
-.message-content a {
-    color: #0066cc;
-    text-decoration: none;
-    font-weight: 500;
-}
-
-.message.user .message-content a {
-    color: white;
-    text-decoration: underline;
-}
-
-/* Estilo para citações */
-blockquote {
-    border-left: 3px solid var(--carglass-yellow);
-    padding-left: 10px;
-    margin: 10px 0;
-    color: #555;
-    font-style: italic;
