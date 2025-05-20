@@ -65,6 +65,35 @@ def get_client_data(tipo, valor):
 
 # Gera resposta contextualizada usando a OpenAI API
 def get_ai_response(pergunta, cliente_info):
+    # Primeiramente, tentamos identificar perguntas específicas com palavras-chave
+    pergunta_lower = pergunta.lower()
+    
+    # Perguntas sobre lojas/locais de atendimento
+    if any(keyword in pergunta_lower for keyword in ['loja', 'local', 'mudar local', 'onde', 'endereço', 'filial', 'disponíve']):
+        return """
+        A CarGlass possui diversas lojas na região. As lojas mais próximas são:
+        
+        - CarGlass Morumbi: Av. Professor Francisco Morato, 2307 - Butantã, São Paulo
+        - CarGlass Vila Mariana: Rua Domingos de Morais, 1267 - Vila Mariana, São Paulo
+        - CarGlass Santo André: Av. Industrial, 600 - Santo André
+        
+        Se deseja mudar o local do seu atendimento, por favor entre em contato com nossa central: 0800-727-2327.
+        """
+    
+    # Perguntas sobre garantia
+    if any(keyword in pergunta_lower for keyword in ['garantia', 'seguro', 'cobertura']):
+        return f"""
+        A garantia do serviço de {cliente_info['dados']['tipo_servico']} é de 12 meses a partir da data de conclusão.
+        
+        Esta garantia cobre:
+        - Defeitos de instalação
+        - Problemas de vedação
+        - Infiltrações relacionadas ao serviço
+        
+        Em caso de dúvidas específicas sobre a garantia, entre em contato com nossa central: 0800-727-2327.
+        """
+    
+    # Se não for uma pergunta específica que sabemos responder, usamos a OpenAI
     try:
         # Constrói o prompt para a OpenAI API com contexto do cliente
         system_message = f"""
@@ -75,6 +104,12 @@ def get_ai_response(pergunta, cliente_info):
         - Serviço: {cliente_info['dados']['tipo_servico']}
         - Veículo: {cliente_info['dados']['veiculo']['modelo']} - {cliente_info['dados']['veiculo']['ano']}
         - Placa: {cliente_info['dados']['veiculo']['placa']}
+        
+        Informações importantes a saber:
+        - A CarGlass possui lojas em São Paulo, Santo André, São Bernardo e Guarulhos
+        - A garantia é de 12 meses para todos os serviços
+        - O prazo médio para troca de parabrisa é de 2 dias úteis
+        - Para mudar o local de atendimento, o cliente deve ligar para 0800-727-2327
         
         Forneça uma resposta personalizada considerando o contexto do atendimento. 
         Seja simpática, breve e objetiva. Não invente informações que não constam nos dados acima.
@@ -106,7 +141,7 @@ def get_ai_response(pergunta, cliente_info):
         fallback_responses = [
             f"Olá! Seu serviço de {cliente_info['dados']['tipo_servico']} está em andamento. Nossa equipe está trabalhando para entregar o melhor resultado.",
             f"Seu veículo {cliente_info['dados']['veiculo']['modelo']} está sendo atendido por nossa equipe técnica especializada.",
-            "A loja mais próxima fica na Av. Paulista, 1000 - São Paulo. Funciona das 8h às 18h.",
+            "Temos lojas em São Paulo, Santo André, São Bernardo e Guarulhos. Para mais detalhes ou para mudar o local do seu atendimento, entre em contato com nossa central: 0800-727-2327.",
             f"A garantia do serviço de {cliente_info['dados']['tipo_servico']} é de 12 meses a partir da data de conclusão."
         ]
         return random.choice(fallback_responses)
@@ -156,11 +191,45 @@ def send_message():
                 status = client_data['dados']['status']
                 status_tag = f'<span class="status-tag">{status}</span>'
                 
-                # Mensagem de resposta
+                # Barra de progresso - Criada uma única vez
+                progress_bar = ''
+                if status == "Em andamento":
+                    progress_bar = '''
+                    <div class="progress-container">
+                        <div class="progress-bar">
+                            <div class="progress-steps">
+                                <div class="step complete">
+                                    <div class="step-node"></div>
+                                    <div class="step-label">Recebido</div>
+                                </div>
+                                <div class="step active">
+                                    <div class="step-node"></div>
+                                    <div class="step-label">Em andamento</div>
+                                </div>
+                                <div class="step">
+                                    <div class="step-node"></div>
+                                    <div class="step-label">Instalação</div>
+                                </div>
+                                <div class="step">
+                                    <div class="step-node"></div>
+                                    <div class="step-label">Inspeção</div>
+                                </div>
+                                <div class="step">
+                                    <div class="step-node"></div>
+                                    <div class="step-label">Concluído</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    '''
+                
+                # Mensagem de resposta com uma única barra de progresso
                 response = f"""
                 Olá {client_data['dados']['nome']}! Encontrei suas informações.
                 
                 Seu atendimento está com status: {status_tag}
+                
+                {progress_bar}
                 
                 Ordem de serviço: {client_data['dados']['ordem']}
                 Serviço: {client_data['dados']['tipo_servico']}
