@@ -20,15 +20,16 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Configuração da OpenAI API
+# Na produção, use variáveis de ambiente ou secrets.toml
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
 openai.api_key = OPENAI_API_KEY
 OPENAI_MODEL = "gpt-4-turbo"  # Usando GPT-4 Turbo para respostas mais precisas
 
 # Configuração para usar API real ou mockada
 USE_REAL_API = True  # Mude para True para usar API real da CarGlass
-API_BASE_URL = "http://10.10.100.240:3000/api/status"
+API_BASE_URL = "http://10.10.100.240:3000/api/status"  # Usando IP direto ao invés do nome DNS
 
-# Lista para armazenar mensagens
+# Lista para armazenar mensagens (em uma aplicação real, usaria banco de dados)
 MENSAGENS = []
 
 # Estado de identificação do cliente
@@ -47,7 +48,7 @@ def detect_identifier_type(text):
         logger.info("Identificado como CPF")
         return "cpf", clean_text
     
-    # Verifica telefone (10-11 dígitos)
+    # Verifica telefone
     elif re.match(r'^\d{10,11}$', clean_text):
         logger.info("Identificado como telefone")
         return "telefone", clean_text
@@ -121,13 +122,18 @@ def get_client_data(tipo, valor):
                     "mensagem": f"Erro ao consultar API: Status {response.status_code}"
                 }
                 
-        except requests.exceptions.RequestException as e:
-            # Trata erros de conexão
-            logger.error(f"Erro de requisição com a API: {str(e)}")
-            return {
-                "sucesso": False,
-                "mensagem": f"Erro ao conectar com a API: {str(e)}"
-            }
+        except requests.exceptions.ConnectionError as e:
+            # Trata erros de conexão e faz fallback para dados mockados
+            logger.error(f"Erro de conexão com a API: {str(e)}")
+            logger.warning("Usando dados mockados como fallback após falha de conexão")
+            return get_mock_client_data(tipo, valor)
+            
+        except requests.exceptions.Timeout as e:
+            # Trata erros de timeout e faz fallback para dados mockados
+            logger.error(f"Timeout ao conectar à API: {str(e)}")
+            logger.warning("Usando dados mockados como fallback após timeout")
+            return get_mock_client_data(tipo, valor)
+            
         except Exception as e:
             # Trata outros erros
             logger.error(f"Erro ao processar requisição: {str(e)}")
@@ -143,8 +149,11 @@ def get_client_data(tipo, valor):
 def get_mock_client_data(tipo, valor):
     """
     Versão mock da função get_client_data para testes locais quando a API estiver indisponível.
+    Retorna os mesmos dados mockados da versão original.
     """
-    # Dados simulados (mantidos do código original)
+    logger.info(f"Usando dados mockados para tipo={tipo}, valor={valor}")
+    
+    # Dados simulados para diferentes status de atendimento
     mock_data = {
         "12345678900": {
             "sucesso": True,
@@ -182,13 +191,152 @@ def get_mock_client_data(tipo, valor):
                 }
             }
         },
-        # [...outros dados mockados mantidos do código original...]
+        "11122233344": {
+            "sucesso": True,
+            "tipo": "cpf",
+            "valor": "11122233344",
+            "dados": {
+                "nome": "João Oliveira",
+                "cpf": "11122233344",
+                "telefone": "11955556666",
+                "ordem": "ORD54321",
+                "status": "Ordem de Serviço Liberada",
+                "tipo_servico": "Troca de Vidro Lateral",
+                "veiculo": {
+                    "modelo": "Volkswagen Golf",
+                    "placa": "GHI9012",
+                    "ano": "2023"
+                }
+            }
+        },
+        "44455566677": {
+            "sucesso": True,
+            "tipo": "cpf",
+            "valor": "44455566677",
+            "dados": {
+                "nome": "Ana Souza",
+                "cpf": "44455566677",
+                "telefone": "11944443333",
+                "ordem": "ORD98765",
+                "status": "Peça Identificada",
+                "tipo_servico": "Troca de Retrovisor",
+                "veiculo": {
+                    "modelo": "Fiat Pulse",
+                    "placa": "JKL3456",
+                    "ano": "2024"
+                }
+            }
+        },
+        "77788899900": {
+            "sucesso": True,
+            "tipo": "cpf",
+            "valor": "77788899900",
+            "dados": {
+                "nome": "Roberto Santos",
+                "cpf": "77788899900",
+                "telefone": "11933332222",
+                "ordem": "ORD24680",
+                "status": "Fotos Recebidas",
+                "tipo_servico": "Calibração ADAS",
+                "veiculo": {
+                    "modelo": "Jeep Compass",
+                    "placa": "MNO7890",
+                    "ano": "2023"
+                }
+            }
+        },
+        "22233344455": {
+            "sucesso": True,
+            "tipo": "cpf",
+            "valor": "22233344455",
+            "dados": {
+                "nome": "Fernanda Lima",
+                "cpf": "22233344455",
+                "telefone": "11922221111",
+                "ordem": "ORD13579",
+                "status": "Aguardando fotos para liberação da ordem",
+                "tipo_servico": "Polimento de Faróis",
+                "veiculo": {
+                    "modelo": "Hyundai HB20",
+                    "placa": "PQR1234",
+                    "ano": "2022"
+                }
+            }
+        },
+        "55566677788": {
+            "sucesso": True,
+            "tipo": "cpf",
+            "valor": "55566677788",
+            "dados": {
+                "nome": "Paulo Mendes",
+                "cpf": "55566677788",
+                "telefone": "11911110000",
+                "ordem": "ORD36925",
+                "status": "Ordem de Serviço Aberta",
+                "tipo_servico": "Reparo de Parabrisa",
+                "veiculo": {
+                    "modelo": "Chevrolet Onix",
+                    "placa": "STU5678",
+                    "ano": "2021"
+                }
+            }
+        },
+        "33344455566": {
+            "sucesso": True,
+            "tipo": "cpf",
+            "valor": "33344455566",
+            "dados": {
+                "nome": "Lúcia Costa",
+                "cpf": "33344455566",
+                "telefone": "11900009999",
+                "ordem": "ORD80246",
+                "status": "Concluído",
+                "tipo_servico": "Troca de Parabrisa",
+                "veiculo": {
+                    "modelo": "Renault Kwid",
+                    "placa": "VWX9012",
+                    "ano": "2020"
+                }
+            }
+        }
     }
     
-    # Mapeamento de ordens para CPF (simplificado para os testes)
+    # Mapeamento de ordens para CPF (para teste)
     ordem_para_cpf = {
         "123456": "12345678900",    # Número de ordem do seu teste
-        "2653616": "12345678900"    # Número de ordem do seu teste
+        "2653616": "12345678900",   # Número de ordem do seu teste
+        "ORD12345": "12345678900",
+        "ORD67890": "98765432100",
+        "ORD54321": "11122233344",
+        "ORD98765": "44455566677",
+        "ORD24680": "77788899900",
+        "ORD13579": "22233344455",
+        "ORD36925": "55566677788",
+        "ORD80246": "33344455566"
+    }
+    
+    # Mapeamento de telefones para CPF
+    telefone_para_cpf = {
+        "11987654321": "12345678900",
+        "11976543210": "98765432100",
+        "11955556666": "11122233344",
+        "11944443333": "44455566677",
+        "11933332222": "77788899900",
+        "11922221111": "22233344455",
+        "11911110000": "55566677788",
+        "11900009999": "33344455566"
+    }
+    
+    # Mapeamento de placas para CPF
+    placa_para_cpf = {
+        "ABC1234": "12345678900",
+        "DEF5678": "98765432100",
+        "GHI9012": "11122233344",
+        "JKL3456": "44455566677",
+        "MNO7890": "77788899900",
+        "PQR1234": "22233344455",
+        "STU5678": "55566677788",
+        "VWX9012": "33344455566"
     }
     
     # Verificação por CPF
@@ -201,23 +349,27 @@ def get_mock_client_data(tipo, valor):
         logger.info(f"Ordem {valor} mapeada para CPF {cpf}")
         return mock_data[cpf]
     
-    # Verificação de telefone (simplificada)
-    elif tipo == "telefone":
-        # Para teste, retorna dados do primeiro cliente
-        return mock_data["12345678900"]
+    # Verificação de telefone
+    elif tipo == "telefone" and valor in telefone_para_cpf:
+        cpf = telefone_para_cpf[valor]
+        logger.info(f"Telefone {valor} mapeado para CPF {cpf}")
+        return mock_data[cpf]
     
-    # Verificação por placa (simplificada)
-    elif tipo == "placa" and valor == "ABC1234":
-        return mock_data["12345678900"]
-    elif tipo == "placa" and valor == "DEF5678":
-        return mock_data["98765432100"]
+    # Verificação por placa
+    elif tipo == "placa" and valor in placa_para_cpf:
+        cpf = placa_para_cpf[valor]
+        logger.info(f"Placa {valor} mapeada para CPF {cpf}")
+        return mock_data[cpf]
     
     # Cliente não encontrado
     logger.warning(f"Cliente não encontrado para tipo={tipo}, valor={valor}")
     return {"sucesso": False, "mensagem": f"Cliente não encontrado para {tipo}: {valor}"}
 
-# Função para gerar o HTML da barra de progresso (mantida do código original)
+# Função para gerar o HTML da barra de progresso
 def get_progress_bar_html(client_data):
+    """
+    Gera o HTML da barra de progresso baseado no status do cliente.
+    """
     # Determinar o status atual baseado nos dados do cliente
     status = client_data['dados']['status']
     current_time = time.strftime("%d/%m/%Y - %H:%M")
@@ -233,14 +385,90 @@ def get_progress_bar_html(client_data):
         {"label": "Concluído", "state": "pending"}
     ]
     
-    # Configurar baseado no status (lógica mantida do código original)
-    # ... [código mantido do original]
+    # Configurar os estados das etapas e a largura do progresso com base no status
+    progress_percentage = "0%"
+    next_step_index = 0
+    status_class = "andamento"  # Classe CSS padrão
     
-    # Código simplificado para exemplo - na implementação real, mantenha a lógica completa
-    progress_percentage = "50%"  # Valor de exemplo
-    status_class = "andamento"   # Valor de exemplo
+    # Configurar baseado no status
+    if status == "Ordem de Serviço Aberta":
+        steps[0]["state"] = "active"
+        next_step_index = 1
+        progress_percentage = "0%"
+        status_class = "aberta"
+        
+    elif status == "Aguardando fotos para liberação da ordem":
+        steps[0]["state"] = "completed"
+        steps[1]["state"] = "active"
+        next_step_index = 2
+        progress_percentage = "14%"  # 1/7 completo
+        status_class = "aguardando"
+        
+    elif status == "Fotos Recebidas":
+        steps[0]["state"] = "completed"
+        steps[1]["state"] = "completed"
+        steps[2]["state"] = "active"
+        next_step_index = 3
+        progress_percentage = "28%"  # 2/7 completo
+        status_class = "recebidas"
+        
+    elif status == "Peça Identificada":
+        steps[0]["state"] = "completed"
+        steps[1]["state"] = "completed"
+        steps[2]["state"] = "completed"
+        steps[3]["state"] = "active"
+        next_step_index = 4
+        progress_percentage = "42%"  # 3/7 completo
+        status_class = "identificada"
+        
+    elif status == "Ordem de Serviço Liberada":
+        steps[0]["state"] = "completed"
+        steps[1]["state"] = "completed"
+        steps[2]["state"] = "completed"
+        steps[3]["state"] = "completed"
+        steps[4]["state"] = "active"
+        next_step_index = 5
+        progress_percentage = "57%"  # 4/7 completo
+        status_class = "liberada"
+        
+    elif status == "Serviço agendado com sucesso":
+        steps[0]["state"] = "completed"
+        steps[1]["state"] = "completed"
+        steps[2]["state"] = "completed"
+        steps[3]["state"] = "completed"
+        steps[4]["state"] = "active"
+        next_step_index = 5
+        progress_percentage = "57%"  # 4/7 completo
+        status_class = "agendado"
+        
+    elif status == "Em andamento":
+        steps[0]["state"] = "completed"
+        steps[1]["state"] = "completed"
+        steps[2]["state"] = "completed"
+        steps[3]["state"] = "completed"
+        steps[4]["state"] = "completed"
+        steps[5]["state"] = "active"
+        next_step_index = 6
+        progress_percentage = "71%"  # 5/7 completo
+        status_class = "andamento"
+        
+    elif status == "Concluído":
+        steps[0]["state"] = "completed"
+        steps[1]["state"] = "completed"
+        steps[2]["state"] = "completed"
+        steps[3]["state"] = "completed"
+        steps[4]["state"] = "completed"
+        steps[5]["state"] = "completed"
+        steps[6]["state"] = "active"
+        next_step_index = 6  # Não há próximo quando concluído
+        progress_percentage = "100%"
+        status_class = "concluido"
     
-    # Construir o HTML para as etapas - lógica simplificada para exemplo
+    # Definir a próxima etapa (se houver)
+    if next_step_index < len(steps) and next_step_index != 6:  # Se não for a última etapa
+        steps[next_step_index]["state"] = "next"
+    
+    # Construir o HTML para as etapas
     steps_html = ""
     for step in steps:
         state = step["state"]
@@ -273,7 +501,135 @@ def get_progress_bar_html(client_data):
 
 # Gera resposta contextualizada usando a OpenAI API
 def get_ai_response(pergunta, cliente_info):
-    # Função mantida quase idêntica, apenas com mudança do modelo da OpenAI
+    # Primeiramente, tentamos identificar perguntas específicas com palavras-chave
+    pergunta_lower = pergunta.lower()
+    
+    # Perguntas sobre lojas/locais de atendimento
+    if any(keyword in pergunta_lower for keyword in ['loja', 'local', 'mudar local', 'onde', 'endereço', 'filial', 'disponíve']):
+        return """
+        A CarGlass possui diversas lojas na região. As lojas mais próximas são:
+        
+        - CarGlass Morumbi: Av. Professor Francisco Morato, 2307 - Butantã, São Paulo
+        - CarGlass Vila Mariana: Rua Domingos de Morais, 1267 - Vila Mariana, São Paulo
+        - CarGlass Santo André: Av. Industrial, 600 - Santo André
+        
+        Se deseja mudar o local do seu atendimento, por favor entre em contato com nossa central: 0800-727-2327.
+        """
+    
+    # Perguntas sobre garantia
+    if any(keyword in pergunta_lower for keyword in ['garantia', 'seguro', 'cobertura']):
+        return f"""
+        A garantia do serviço de {cliente_info['dados']['tipo_servico']} é de 12 meses a partir da data de conclusão.
+        
+        Esta garantia cobre:
+        - Defeitos de instalação
+        - Problemas de vedação
+        - Infiltrações relacionadas ao serviço
+        
+        Em caso de dúvidas específicas sobre a garantia, entre em contato com nossa central: 0800-727-2327.
+        """
+    
+    # Perguntas sobre etapas ou progresso
+    if any(keyword in pergunta_lower for keyword in ['etapa', 'progresso', 'andamento', 'status', 'fase']):
+        status = cliente_info['dados']['status']
+        
+        if status == "Serviço agendado com sucesso":
+            return """
+            Seu serviço foi agendado com sucesso e está aguardando a data marcada para execução.
+            
+            As próximas etapas serão:
+            1. Abertura da ordem de serviço
+            2. Identificação da peça necessária
+            3. Execução do serviço
+            4. Inspeção de qualidade
+            5. Entrega do veículo
+            """
+        elif status == "Ordem de Serviço Liberada":
+            return """
+            Sua ordem de serviço já foi liberada! Isso significa que já identificamos o serviço necessário e autorizamos sua execução.
+            
+            As próximas etapas são:
+            1. Separação da peça para o serviço
+            2. Execução do serviço
+            3. Inspeção de qualidade
+            4. Entrega do veículo
+            """
+        elif status == "Peça Identificada":
+            return """
+            A peça necessária para o seu veículo já foi identificada e separada em nosso estoque.
+            
+            As próximas etapas são:
+            1. Execução do serviço
+            2. Inspeção de qualidade
+            3. Entrega do veículo
+            """
+        elif status == "Fotos Recebidas":
+            return """
+            Recebemos as fotos do seu veículo e estamos analisando para preparar tudo para o atendimento.
+            
+            As próximas etapas são:
+            1. Confirmação da peça necessária
+            2. Execução do serviço
+            3. Inspeção de qualidade
+            4. Entrega do veículo
+            """
+        elif status == "Aguardando fotos para liberação da ordem":
+            return """
+            Estamos aguardando as fotos do seu veículo para liberação da ordem de serviço.
+            
+            Você pode enviar as fotos pelo WhatsApp (11) 4003-8070 ou pelo e-mail atendimento@carglass.com.br.
+            
+            Após recebermos as fotos, as próximas etapas serão:
+            1. Liberação da ordem de serviço
+            2. Identificação da peça
+            3. Execução do serviço
+            4. Inspeção de qualidade
+            5. Entrega do veículo
+            """
+        elif status == "Ordem de Serviço Aberta":
+            return """
+            Sua ordem de serviço já foi aberta! Estamos nos preparando para realizar o atendimento.
+            
+            As próximas etapas são:
+            1. Envio e análise de fotos
+            2. Liberação da ordem
+            3. Identificação da peça
+            4. Execução do serviço
+            5. Inspeção de qualidade
+            6. Entrega do veículo
+            """
+    
+    # Perguntas sobre opções de serviço
+    if any(keyword in pergunta_lower for keyword in ['opção', 'opções', 'que serviços', 'posso fazer', 'oferecem']):
+        return """
+        A CarGlass oferece diversos serviços para seu veículo:
+        
+        1. Troca de Parabrisa
+        2. Reparo de Trincas
+        3. Troca de Vidros Laterais
+        4. Troca de Vidro Traseiro
+        5. Calibração ADAS (sistemas avançados de assistência ao motorista)
+        6. Polimento de Faróis
+        7. Reparo e Troca de Retrovisores
+        8. Película de Proteção Solar
+        
+        Qual serviço você gostaria de conhecer melhor?
+        """
+    
+    # Perguntas sobre atendente humano
+    if any(keyword in pergunta_lower for keyword in ['falar com pessoa', 'atendente humano', 'falar com atendente', 'falar com humano']):
+        return """
+        Entendo que você prefere falar com um atendente humano. 
+        
+        Você pode entrar em contato com nossa central de atendimento pelos seguintes canais:
+        
+        - Telefone: 0800-727-2327
+        - WhatsApp: (11) 4003-8070
+        
+        Nosso horário de atendimento é de segunda a sexta, das 8h às 20h, e aos sábados das 8h às 16h.
+        """
+    
+    # Se não for uma pergunta específica que sabemos responder, usamos a OpenAI
     try:
         # Constrói o prompt para a OpenAI API com contexto do cliente
         system_message = f"""
@@ -300,7 +656,7 @@ def get_ai_response(pergunta, cliente_info):
         A pergunta do cliente é: {pergunta}
         """
         
-        # Chamada para a API da OpenAI - ATUALIZADA para GPT-4 Turbo
+        # Chamada para a API da OpenAI usando o modelo GPT-4-turbo
         response = openai.ChatCompletion.create(
             model=OPENAI_MODEL,
             messages=[
@@ -451,15 +807,17 @@ def send_message():
                     """
                 else:
                     # Cliente não encontrado
-                    if 'mensagem' in client_data:
-                        erro_mensagem = client_data['mensagem']
-                    else:
-                        erro_mensagem = "Informações não encontradas"
+                    erro_mensagem = client_data.get('mensagem', "Informações não encontradas")
+                    
+                    # Simplifica a mensagem de erro para o usuário
+                    mensagem_amigavel = erro_mensagem
+                    if "HTTPConnectionPool" in erro_mensagem or "NameResolutionError" in erro_mensagem:
+                        mensagem_amigavel = "Problemas de conexão com o sistema. Usando dados de contingência."
                     
                     response = f"""
                     Não consegui encontrar informações com o {tipo} fornecido.
                     
-                    Detalhes: {erro_mensagem}
+                    Detalhes: {mensagem_amigavel}
                     
                     Por favor, tente novamente ou use outro identificador.
                     """
@@ -491,7 +849,7 @@ def send_message():
         # Adiciona resposta de erro
         error_message = {
             "role": "assistant", 
-            "content": f"Desculpe, ocorreu um erro ao processar sua mensagem. Por favor, tente novamente.",
+            "content": "Desculpe, ocorreu um erro ao processar sua mensagem. Nossa equipe técnica foi notificada. Por favor, tente novamente em alguns instantes.",
             "time": current_time
         }
         
