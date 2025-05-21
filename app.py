@@ -26,7 +26,7 @@ OPENAI_MODEL = "gpt-4-turbo"  # Usando GPT-4 Turbo para respostas mais precisas
 
 # Configuração para usar API real ou mockada
 USE_REAL_API = True  # Mude para True para usar API real da CarGlass
-API_BASE_URL = "http://fusion-hml.carglass.hml.local:3000/api/status"
+API_BASE_URL = "http://10.10.100.240:3000/api/status"
 
 # Lista para armazenar mensagens
 MENSAGENS = []
