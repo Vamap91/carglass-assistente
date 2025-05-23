@@ -1,6 +1,6 @@
 """
 Aplicação principal do Assistente Virtual CarGlass - Versão 2.0
-Otimizada para Render com fallback completo em memória
+Otimizada para Render com fallback completo em memória + Integração Twilio WhatsApp
 """
 import os
 import logging
@@ -34,8 +34,142 @@ class Config:
     USE_REAL_API: bool = os.getenv('USE_REAL_API', 'true').lower() == 'true'
     SESSION_TIMEOUT: int = int(os.getenv('SESSION_TIMEOUT', '1800'))
     CACHE_TTL: int = int(os.getenv('CACHE_TTL', '300'))
+    
+    # Configurações Twilio
+    TWILIO_ACCOUNT_SID: str = os.getenv('TWILIO_ACCOUNT_SID', '')
+    TWILIO_AUTH_TOKEN: str = os.getenv('TWILIO_AUTH_TOKEN', '')
+    TWILIO_WHATSAPP_NUMBER: str = os.getenv('TWILIO_WHATSAPP_NUMBER', 'whatsapp:+14155238886')
+    TWILIO_ENABLED: bool = bool(os.getenv('TWILIO_ACCOUNT_SID'))
 
 config = Config()
+
+# ===== TWILIO WHATSAPP HANDLER =====
+class TwilioWhatsAppHandler:
+    def __init__(self):
+        self.account_sid = config.TWILIO_ACCOUNT_SID
+        self.auth_token = config.TWILIO_AUTH_TOKEN
+        self.whatsapp_number = config.TWILIO_WHATSAPP_NUMBER
+        self.client = None
+        
+        if self.account_sid and self.auth_token:
+            try:
+                from twilio.rest import Client
+                from twilio.twiml.messaging_response import MessagingResponse
+                self.client = Client(self.account_sid, self.auth_token)
+                self.MessagingResponse = MessagingResponse
+                logger.info("✅ Twilio WhatsApp handler inicializado com sucesso")
+            except ImportError:
+                logger.error("❌ Biblioteca Twilio não instalada. Execute: pip install twilio")
+            except Exception as e:
+                logger.error(f"❌ Erro ao inicializar Twilio: {e}")
+        else:
+            logger.warning("⚠️ Credenciais Twilio não configuradas - WhatsApp desabilitado")
+    
+    def is_enabled(self) -> bool:
+        """Verifica se o Twilio está configurado e habilitado"""
+        return self.client is not None
+    
+    def send_message(self, to_number: str, message: str) -> bool:
+        """
+        Envia mensagem WhatsApp via Twilio
+        
+        Args:
+            to_number: Número do destinatário (formato: +5511987654321 ou 5511987654321)
+            message: Texto da mensagem
+            
+        Returns:
+            bool: True se enviou com sucesso, False caso contrário
+        """
+        if not self.is_enabled():
+            logger.error("Twilio não está habilitado")
+            return False
+        
+        try:
+            # Formata número para WhatsApp
+            clean_number = re.sub(r'[^\d+]', '', to_number)
+            if not clean_number.startswith('+'):
+                if clean_number.startswith('55'):
+                    clean_number = '+' + clean_number
+                else:
+                    clean_number = '+55' + clean_number
+            
+            whatsapp_to = f"whatsapp:{clean_number}"
+            
+            # Limita tamanho da mensagem (Twilio limit: 1600 chars)
+            if len(message) > 1500:
+                message = message[:1500] + "...\n\n📱 *Continue no link:*\nhttps://carglass-assistente.onrender.com"
+            
+            # Envia mensagem
+            message_instance = self.client.messages.create(
+                body=message,
+                from_=self.whatsapp_number,
+                to=whatsapp_to
+            )
+            
+            logger.info(f"✅ Mensagem Twilio enviada: {message_instance.sid} para {whatsapp_to}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Erro ao enviar mensagem Twilio: {e}")
+            return False
+    
+    def process_incoming_message(self, request_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Processa mensagem recebida do webhook Twilio
+        
+        Args:
+            request_data: Dados do webhook Twilio (request.form ou dict)
+            
+        Returns:
+            dict: Dados processados da mensagem ou None se erro
+        """
+        try:
+            # Extrai dados da mensagem
+            from_number = request_data.get('From', '').replace('whatsapp:', '').replace('+', '')
+            message_body = request_data.get('Body', '').strip()
+            message_sid = request_data.get('MessageSid', '')
+            
+            # Limpa número (remove código do país se necessário)
+            if from_number.startswith('55') and len(from_number) > 11:
+                from_number = from_number[2:]  # Remove +55
+            
+            logger.info(f"📱 WhatsApp recebido de {from_number[:4]}***: {message_body[:50]}...")
+            
+            return {
+                'phone': from_number,
+                'message': message_body,
+                'message_id': message_sid,
+                'platform': 'whatsapp',
+                'raw_data': dict(request_data)
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Erro ao processar mensagem WhatsApp: {e}")
+            return None
+    
+    def create_twiml_response(self, message: str = None) -> str:
+        """
+        Cria resposta TwiML (opcional - para resposta imediata)
+        
+        Args:
+            message: Mensagem de resposta (opcional)
+            
+        Returns:
+            str: XML TwiML
+        """
+        if not self.is_enabled():
+            return ""
+        
+        try:
+            response = self.MessagingResponse()
+            if message:
+                response.message(message)
+            return str(response)
+        except:
+            return ""
+
+# Instância global do handler Twilio
+twilio_handler = TwilioWhatsAppHandler()
 
 # ===== UTILITÁRIOS =====
 def get_current_time() -> str:
@@ -52,7 +186,6 @@ def sanitize_input(text: str) -> str:
     text = re.sub(r'javascript:', '', text, flags=re.IGNORECASE)
     return text
 
-# Correção aplicada dia 23.05.25
 def validate_cpf(cpf: str) -> bool:
     """Valida CPF com exceções para CPFs de teste"""
     if not cpf or len(cpf) != 11:
@@ -108,6 +241,49 @@ def detect_identifier_type(text: str) -> Tuple[Optional[str], str]:
     
     return None, clean_text
 
+def format_for_whatsapp(html_content: str) -> str:
+    """
+    Converte resposta HTML para formato WhatsApp
+    
+    Args:
+        html_content: Conteúdo com HTML tags
+        
+    Returns:
+        str: Texto formatado para WhatsApp
+    """
+    text = html_content
+    
+    # Converte HTML para markdown WhatsApp
+    text = re.sub(r'<strong>(.*?)</strong>', r'*\1*', text)  # Bold
+    text = re.sub(r'<b>(.*?)</b>', r'*\1*', text)  # Bold
+    text = re.sub(r'<em>(.*?)</em>', r'_\1_', text)  # Italic
+    text = re.sub(r'<i>(.*?)</i>', r'_\1_', text)  # Italic
+    
+    # Remove componentes específicos do HTML
+    text = re.sub(r'<div class="status-progress-container">.*?</div>', '', text, flags=re.DOTALL)
+    text = re.sub(r'<div class="timeline-.*?</div>', '', text, flags=re.DOTALL)
+    text = re.sub(r'<span class="status-tag.*?</span>', lambda m: re.sub(r'<.*?>', '', m.group()), text)
+    
+    # Remove outras tags HTML
+    text = re.sub(r'<[^>]+>', '', text)
+    
+    # Converte entidades HTML
+    text = text.replace('&amp;', '&')
+    text = text.replace('&lt;', '<')
+    text = text.replace('&gt;', '>')
+    text = text.replace('&nbsp;', ' ')
+    
+    # Limita tamanho (WhatsApp limit: 4096 chars, mas Twilio é menor)
+    if len(text) > 1400:
+        text = text[:1400] + "...\n\n📱 *Para mais detalhes:*\nhttps://carglass-assistente.onrender.com"
+    
+    # Remove espaços extras e quebras de linha excessivas
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    text = re.sub(r' {2,}', ' ', text)
+    text = text.strip()
+    
+    return text
+
 # ===== CACHE EM MEMÓRIA =====
 class MemoryCache:
     def __init__(self):
@@ -149,6 +325,8 @@ class SessionData:
     client_identified: bool
     client_info: Optional[Dict[str, Any]]
     messages: List[Dict[str, Any]]
+    platform: str = "web"  # "web" ou "whatsapp"
+    phone_number: Optional[str] = None  # Para sessões WhatsApp
     
     def is_expired(self) -> bool:
         return (time.time() - self.last_activity) > config.SESSION_TIMEOUT
@@ -160,7 +338,8 @@ class SessionData:
         message = {
             "role": role,
             "content": content,
-            "time": get_current_time()
+            "time": get_current_time(),
+            "platform": self.platform
         }
         self.messages.append(message)
         self.update_activity()
@@ -168,8 +347,9 @@ class SessionData:
 class SessionManager:
     def __init__(self):
         self.sessions = {}
+        self.whatsapp_sessions = {}  # phone_number -> session_id
     
-    def create_session(self) -> SessionData:
+    def create_session(self, platform: str = "web", phone_number: str = None) -> SessionData:
         session_id = str(uuid.uuid4())
         current_time = time.time()
         
@@ -179,15 +359,25 @@ class SessionManager:
             last_activity=current_time,
             client_identified=False,
             client_info=None,
-            messages=[]
+            messages=[],
+            platform=platform,
+            phone_number=phone_number
         )
         
-        session_data.add_message(
-            "assistant",
-            "Olá! Sou Clara, sua assistente virtual da CarGlass. Digite seu CPF, telefone ou placa do veículo para começarmos."
-        )
+        # Mensagem de boas-vindas personalizada por plataforma
+        if platform == "whatsapp":
+            welcome_msg = "👋 *Olá! Sou Clara, assistente virtual da CarGlass.*\n\nDigite seu *CPF*, *telefone* ou *placa do veículo* para consultar seu atendimento."
+        else:
+            welcome_msg = "Olá! Sou Clara, sua assistente virtual da CarGlass. Digite seu CPF, telefone ou placa do veículo para começarmos."
+        
+        session_data.add_message("assistant", welcome_msg)
         
         self.sessions[session_id] = session_data
+        
+        # Para WhatsApp, mapeia telefone -> session_id
+        if platform == "whatsapp" and phone_number:
+            self.whatsapp_sessions[phone_number] = session_id
+        
         self._cleanup_expired()
         return session_data
     
@@ -200,16 +390,41 @@ class SessionManager:
             session_data.update_activity()
             return session_data
         elif session_data:
-            del self.sessions[session_id]
+            self._remove_session(session_id)
         
         return None
+    
+    def get_whatsapp_session(self, phone_number: str) -> Optional[SessionData]:
+        """Recupera ou cria sessão WhatsApp baseada no telefone"""
+        if not phone_number:
+            return None
+        
+        session_id = self.whatsapp_sessions.get(phone_number)
+        if session_id:
+            session_data = self.get_session(session_id)
+            if session_data:
+                return session_data
+            else:
+                # Session expirou, remove mapeamento
+                del self.whatsapp_sessions[phone_number]
+        
+        # Cria nova sessão WhatsApp
+        return self.create_session("whatsapp", phone_number)
+    
+    def _remove_session(self, session_id: str):
+        """Remove sessão e limpeza dos mapeamentos"""
+        if session_id in self.sessions:
+            session_data = self.sessions[session_id]
+            if session_data.phone_number and session_data.phone_number in self.whatsapp_sessions:
+                del self.whatsapp_sessions[session_data.phone_number]
+            del self.sessions[session_id]
     
     def _cleanup_expired(self):
         current_time = time.time()
         expired = [sid for sid, data in self.sessions.items() 
                   if current_time - data.last_activity > config.SESSION_TIMEOUT]
         for sid in expired:
-            del self.sessions[sid]
+            self._remove_session(sid)
 
 session_manager = SessionManager()
 
@@ -262,6 +477,7 @@ def get_client_data(tipo: str, valor: str) -> Dict[str, Any]:
     mock_data = get_mock_data(tipo, valor)
     cache.set(cache_key, mock_data, config.CACHE_TTL)
     return mock_data
+
 def get_mock_data(tipo: str, valor: str) -> Dict[str, Any]:
     mock_database = {
         "12345678900": {
@@ -374,13 +590,85 @@ def get_progress_bar_html(client_data: Dict[str, Any]) -> str:
     </div>
     '''
 
+def get_whatsapp_status_text(client_data: Dict[str, Any]) -> str:
+    """Versão simplificada do status para WhatsApp"""
+    status = client_data['dados']['status']
+    
+    # Mapeia status para emojis e texto simples
+    status_emoji = {
+        "Ordem de Serviço Aberta": "📋",
+        "Aguardando fotos para liberação da ordem": "📷",
+        "Fotos Recebidas": "✅",
+        "Peça Identificada": "🔍",
+        "Ordem de Serviço Liberada": "✅",
+        "Serviço agendado com sucesso": "📅",
+        "Em andamento": "🔧",
+        "Concluído": "✅"
+    }
+    
+    emoji = status_emoji.get(status, "📋")
+    
+    # Cria timeline simplificada para WhatsApp
+    timeline_text = f"""
+*📊 Timeline:*
+{"✅" if status != "Ordem de Serviço Aberta" else "🔄"} Ordem Aberta
+{"✅" if status not in ["Ordem de Serviço Aberta", "Aguardando fotos para liberação da ordem"] else "⏳"} Fotos/Peça
+{"✅" if status in ["Em andamento", "Concluído"] else "⏳"} Agendado
+{"✅" if status == "Concluído" else "🔄" if status == "Em andamento" else "⏳"} Execução
+{"✅" if status == "Concluído" else "⏳"} Concluído
+"""
+    
+    return f"{emoji} *{status}*\n\n{timeline_text}"
+
 # ===== AI SERVICE =====
-def get_ai_response(pergunta: str, cliente_info: Dict[str, Any]) -> str:
+def get_ai_response(pergunta: str, cliente_info: Dict[str, Any], platform: str = "web") -> str:
     pergunta_lower = pergunta.lower()
     
-    # Respostas predefinidas
+    # Comandos especiais para WhatsApp
+    if platform == "whatsapp":
+        if pergunta_lower in ['status', 'situacao', 'situação']:
+            dados = cliente_info.get('dados', {})
+            status_text = get_whatsapp_status_text(cliente_info)
+            return f"*Status atual do seu atendimento:*\n\n{status_text}"
+        
+        if pergunta_lower in ['ajuda', 'help', 'menu', 'opcoes', 'opções']:
+            return """
+🤖 *Comandos disponíveis:*
+
+📋 *status* - Ver situação atual
+🏪 *lojas* - Lojas próximas  
+🛡️ *garantia* - Info de garantia
+👥 *atendente* - Falar com pessoa
+🔄 *reiniciar* - Nova consulta
+
+💬 Ou envie sua pergunta!
+"""
+        
+        if pergunta_lower in ['reiniciar', 'reset', 'nova consulta', 'recomeçar']:
+            return "🔄 *Consulta reiniciada!*\n\nDigite seu *CPF*, *telefone* ou *placa do veículo* para nova consulta."
+    
+    # Respostas predefinidas (adaptadas para WhatsApp se necessário)
     if any(keyword in pergunta_lower for keyword in ['loja', 'local', 'onde', 'endereço']):
-        return """
+        if platform == "whatsapp":
+            return """
+🏪 *Lojas CarGlass próximas:*
+
+📍 *CarGlass Morumbi*
+Av. Professor Francisco Morato, 2307
+Butantã - São Paulo
+
+📍 *CarGlass Vila Mariana*  
+Rua Domingos de Morais, 1267
+Vila Mariana - São Paulo
+
+📍 *CarGlass Santo André*
+Av. Industrial, 600
+Santo André
+
+📞 *Mudar local:* 0800-727-2327
+"""
+        else:
+            return """
         🏪 **Lojas CarGlass próximas:**
         
         • **CarGlass Morumbi**: Av. Professor Francisco Morato, 2307 - Butantã
@@ -392,7 +680,18 @@ def get_ai_response(pergunta: str, cliente_info: Dict[str, Any]) -> str:
     
     if any(keyword in pergunta_lower for keyword in ['garantia', 'seguro']):
         tipo_servico = cliente_info.get('dados', {}).get('tipo_servico', 'seu serviço')
-        return f"""
+        if platform == "whatsapp":
+            return f"""
+🛡️ *Garantia CarGlass* para {tipo_servico}:
+
+✅ *12 meses* a partir da conclusão
+✅ Cobre defeitos de instalação  
+✅ Válida em qualquer unidade
+
+📞 Central: 0800-727-2327
+"""
+        else:
+            return f"""
         🛡️ **Garantia CarGlass** para {tipo_servico}:
         
         ✅ **12 meses** a partir da conclusão
@@ -403,7 +702,19 @@ def get_ai_response(pergunta: str, cliente_info: Dict[str, Any]) -> str:
         """
     
     if any(keyword in pergunta_lower for keyword in ['falar com pessoa', 'atendente']):
-        return """
+        if platform == "whatsapp":
+            return """
+👥 *Falar com nossa equipe:*
+
+📞 *Central:* 0800-727-2327
+📱 *WhatsApp:* (11) 4003-8070
+
+⏰ *Horário:*
+• Segunda a Sexta: 8h às 20h
+• Sábado: 8h às 16h
+"""
+        else:
+            return """
         👥 **Falar com nossa equipe:**
         
         📞 **Central:** 0800-727-2327
@@ -426,7 +737,8 @@ def get_ai_response(pergunta: str, cliente_info: Dict[str, Any]) -> str:
             Status: {dados.get('status', 'N/A')}
             Serviço: {dados.get('tipo_servico', 'N/A')}
             
-            Seja simpática e objetiva. Central: 0800-727-2327
+            {"Responda em formato WhatsApp (use *negrito* e emojis)." if platform == "whatsapp" else "Seja simpática e objetiva."}
+            Central: 0800-727-2327
             """
             
             response = openai.ChatCompletion.create(
@@ -445,7 +757,10 @@ def get_ai_response(pergunta: str, cliente_info: Dict[str, Any]) -> str:
     
     # Fallback genérico
     nome = cliente_info.get('dados', {}).get('nome', 'Cliente')
-    return f"Entendi sua pergunta, {nome}. Para informações específicas, entre em contato: 📞 **0800-727-2327**"
+    if platform == "whatsapp":
+        return f"Entendi sua pergunta, {nome}! 😊\n\nPara informações específicas:\n📞 *0800-727-2327*"
+    else:
+        return f"Entendi sua pergunta, {nome}. Para informações específicas, entre em contato: 📞 **0800-727-2327**"
 
 # ===== FLASK APP =====
 app = Flask(__name__)
@@ -504,7 +819,7 @@ def send_message():
         if not session_data.client_identified:
             response = process_identification(user_input, session_data)
         else:
-            response = get_ai_response(user_input, session_data.client_info)
+            response = get_ai_response(user_input, session_data.client_info, session_data.platform)
         
         session_data.add_message("assistant", response)
         
@@ -520,11 +835,82 @@ def send_message():
             }]
         }), 500
 
+@app.route('/whatsapp/webhook', methods=['POST'])
+def whatsapp_webhook():
+    """Webhook para receber mensagens WhatsApp via Twilio"""
+    if not twilio_handler.is_enabled():
+        logger.error("Twilio não configurado - webhook rejeitado")
+        return "Twilio not configured", 400
+    
+    try:
+        # Processa mensagem recebida
+        message_data = twilio_handler.process_incoming_message(request.form)
+        
+        if not message_data:
+            logger.error("Falha ao processar dados da mensagem WhatsApp")
+            return "Bad request", 400
+        
+        phone = message_data['phone']
+        message_text = message_data['message']
+        
+        logger.info(f"📱 WhatsApp processando: {phone[:4]}*** - {message_text[:30]}...")
+        
+        # Recupera ou cria sessão WhatsApp
+        session_data = session_manager.get_whatsapp_session(phone)
+        
+        # Comandos especiais antes de adicionar à sessão
+        if message_text.lower() in ['reiniciar', 'reset', 'nova consulta', 'recomeçar']:
+            # Remove sessão atual e cria nova
+            if session_data.session_id in session_manager.sessions:
+                session_manager._remove_session(session_data.session_id)
+            
+            session_data = session_manager.create_session("whatsapp", phone)
+            response = "🔄 *Consulta reiniciada!*\n\nDigite seu *CPF*, *telefone* ou *placa do veículo* para nova consulta."
+        else:
+            # Processa mensagem normalmente
+            session_data.add_message("user", message_text)
+            
+            if not session_data.client_identified:
+                response = process_identification(message_text, session_data)
+            else:
+                response = get_ai_response(message_text, session_data.client_info, "whatsapp")
+            
+            session_data.add_message("assistant", response)
+        
+        # Formata resposta para WhatsApp
+        formatted_response = format_for_whatsapp(response)
+        
+        # Envia resposta via Twilio
+        success = twilio_handler.send_message(phone, formatted_response)
+        
+        if success:
+            logger.info(f"✅ Resposta WhatsApp enviada para {phone[:4]}***")
+        else:
+            logger.error(f"❌ Falha ao enviar resposta WhatsApp para {phone[:4]}***")
+        
+        # Retorna TwiML vazio (resposta já foi enviada via API)
+        return twilio_handler.create_twiml_response(), 200
+        
+    except Exception as e:
+        logger.error(f"❌ Erro no webhook WhatsApp: {e}")
+        logger.error(traceback.format_exc())
+        return "Internal error", 500
+
 def process_identification(user_input: str, session_data: SessionData) -> str:
     tipo, valor = detect_identifier_type(user_input)
     
     if not tipo:
-        return """
+        if session_data.platform == "whatsapp":
+            return """
+Por favor, forneça um identificador válido:
+
+📋 *CPF* (11 dígitos)
+📱 *Telefone* (10 ou 11 dígitos)  
+🚗 *Placa do veículo*
+🔢 *Número da ordem de serviço*
+"""
+        else:
+            return """
         Por favor, forneça um identificador válido:
         
         📋 **CPF** (11 dígitos)
@@ -536,7 +922,17 @@ def process_identification(user_input: str, session_data: SessionData) -> str:
     client_data = get_client_data(tipo, valor)
     
     if not client_data.get('sucesso'):
-        return f"""
+        if session_data.platform == "whatsapp":
+            return f"""
+❌ *Não encontrei informações* com o {tipo} fornecido.
+
+*Você pode tentar:*
+• Verificar se digitou corretamente
+• Usar outro identificador  
+• Entrar em contato: *0800-727-2327*
+"""
+        else:
+            return f"""
         ❌ **Não encontrei informações** com o {tipo} fornecido.
         
         **Você pode tentar:**
@@ -552,12 +948,32 @@ def process_identification(user_input: str, session_data: SessionData) -> str:
     nome = dados.get('nome', 'Cliente')
     status = dados.get('status', 'Em processamento')
     
-    status_class = "agendado" if "agendado" in status.lower() else "andamento"
-    status_tag = f'<span class="status-tag {status_class}">{status}</span>'
-    
-    progress_bar = get_progress_bar_html(client_data)
-    
-    return f"""
+    if session_data.platform == "whatsapp":
+        # Versão simplificada para WhatsApp
+        status_text = get_whatsapp_status_text(client_data)
+        
+        return f"""
+👋 *Olá {nome}!* Encontrei suas informações.
+
+{status_text}
+
+📋 *Resumo:*
+• *Ordem:* {dados.get('ordem', 'N/A')}
+• *Serviço:* {dados.get('tipo_servico', 'N/A')}
+• *Veículo:* {dados.get('veiculo', {}).get('modelo', 'N/A')} ({dados.get('veiculo', {}).get('ano', 'N/A')})
+• *Placa:* {dados.get('veiculo', {}).get('placa', 'N/A')}
+
+💬 Como posso ajudar?
+Digite *ajuda* para ver opções.
+"""
+    else:
+        # Versão completa para web com HTML
+        status_class = "agendado" if "agendado" in status.lower() else "andamento"
+        status_tag = f'<span class="status-tag {status_class}">{status}</span>'
+        
+        progress_bar = get_progress_bar_html(client_data)
+        
+        return f"""
     👋 **Olá {nome}!** Encontrei suas informações.
     
     **Status:** {status_tag}
@@ -578,7 +994,7 @@ def reset():
     try:
         session_id = session.get('session_id')
         if session_id and session_id in session_manager.sessions:
-            del session_manager.sessions[session_id]
+            session_manager._remove_session(session_id)
         
         session_data = session_manager.create_session()
         session['session_id'] = session_data.session_id
@@ -593,13 +1009,58 @@ def health_check():
     return jsonify({
         "status": "healthy",
         "timestamp": get_current_time(),
-        "sessions": len(session_manager.sessions),
-        "cache_items": len(cache.cache)
+        "sessions": {
+            "web": len([s for s in session_manager.sessions.values() if s.platform == "web"]),
+            "whatsapp": len([s for s in session_manager.sessions.values() if s.platform == "whatsapp"]),
+            "total": len(session_manager.sessions)
+        },
+        "cache_items": len(cache.cache),
+        "twilio_enabled": twilio_handler.is_enabled(),
+        "config": {
+            "use_real_api": config.USE_REAL_API,
+            "openai_configured": bool(config.OPENAI_API_KEY)
+        }
     })
 
+@app.route('/whatsapp/status')
+def whatsapp_status():
+    """Endpoint para verificar status do WhatsApp"""
+    if not twilio_handler.is_enabled():
+        return jsonify({
+            "enabled": False,
+            "error": "Twilio não configurado - verifique TWILIO_ACCOUNT_SID e TWILIO_AUTH_TOKEN"
+        }), 400
+    
+    return jsonify({
+        "enabled": True,
+        "whatsapp_number": config.TWILIO_WHATSAPP_NUMBER,
+        "active_sessions": len([s for s in session_manager.sessions.values() if s.platform == "whatsapp"]),
+        "webhook_url": request.url_root + "whatsapp/webhook"
+    })
+
+# ===== TRATAMENTO DE ERROS =====
+@app.errorhandler(404)
+def not_found(error):
+    return jsonify({'error': 'Endpoint não encontrado'}), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    logger.error(f"Erro interno: {error}")
+    return jsonify({'error': 'Erro interno do servidor'}), 500
+
 if __name__ == '__main__':
-    logger.info("🚀 CarGlass Assistant v2.0 iniciando...")
+    logger.info("🚀 CarGlass Assistant v2.0 + Twilio WhatsApp iniciando...")
     logger.info(f"Modo API: {'REAL' if config.USE_REAL_API else 'SIMULAÇÃO'}")
     logger.info(f"OpenAI: {'CONFIGURADO' if config.OPENAI_API_KEY else 'FALLBACK'}")
+    logger.info(f"Twilio WhatsApp: {'HABILITADO' if twilio_handler.is_enabled() else 'DESABILITADO'}")
+    
+    if twilio_handler.is_enabled():
+        logger.info(f"📱 WhatsApp número: {config.TWILIO_WHATSAPP_NUMBER}")
+        logger.info(f"🔗 Webhook URL: http://localhost:5000/whatsapp/webhook (configure no Twilio)")
+    else:
+        logger.warning("⚠️ Para habilitar WhatsApp, configure as variáveis:")
+        logger.warning("   TWILIO_ACCOUNT_SID=ACxxxxx")
+        logger.warning("   TWILIO_AUTH_TOKEN=xxxxx")
+        logger.warning("   TWILIO_WHATSAPP_NUMBER=whatsapp:+14155238886")
     
     app.run(debug=config.DEBUG, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
