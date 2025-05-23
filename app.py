@@ -223,20 +223,45 @@ def get_client_data(tipo: str, valor: str) -> Dict[str, Any]:
     if config.USE_REAL_API:
         import requests
         try:
-            endpoint = f"{config.CARGLASS_API_URL}/{tipo}/{valor}"
+            # URLs específicas para cada tipo de consulta
+            api_urls = {
+                "cpf": "http://fusion-hml.carglass.hml.local:3000/api/status/cpf/",
+                "telefone": "http://fusion-hml.carglass.hml.local:3000/api/status/telefone/",
+                "ordem": "http://fusion-hml.carglass.hml.local:3000/api/status/ordem/"
+            }
+            
+            # Verifica se o tipo é suportado
+            if tipo not in api_urls:
+                logger.warning(f"Tipo '{tipo}' não suportado pelas APIs")
+                return {"sucesso": False, "mensagem": f"Tipo '{tipo}' não suportado"}
+            
+            # Monta URL completa
+            endpoint = f"{api_urls[tipo]}{valor}"
+            logger.info(f"Consultando API CarGlass: {endpoint}")
+            
+            # Faz requisição
             response = requests.get(endpoint, timeout=10)
+            
             if response.status_code == 200:
                 data = response.json()
+                logger.info(f"API CarGlass - Sucesso: {data.get('sucesso')}")
                 cache.set(cache_key, data, config.CACHE_TTL)
                 return data
+            else:
+                logger.error(f"API CarGlass - Status: {response.status_code}")
+                
+        except requests.exceptions.ConnectionError as e:
+            logger.warning(f"API CarGlass indisponível: {e}. Usando fallback.")
+        except requests.exceptions.Timeout as e:
+            logger.warning(f"API CarGlass timeout: {e}. Usando fallback.")
         except Exception as e:
-            logger.warning(f"API falhou, usando mock: {e}")
+            logger.error(f"Erro na API CarGlass: {e}")
     
-    # Dados mockados
+    # Fallback para dados mockados
+    logger.info("Usando dados mockados como fallback")
     mock_data = get_mock_data(tipo, valor)
     cache.set(cache_key, mock_data, config.CACHE_TTL)
     return mock_data
-
 def get_mock_data(tipo: str, valor: str) -> Dict[str, Any]:
     mock_database = {
         "12345678900": {
