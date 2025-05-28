@@ -489,7 +489,10 @@ def get_mock_data(tipo: str, valor: str) -> Dict[str, Any]:
                 "ordem": "ORD12345",
                 "status": "Em andamento",
                 "tipo_servico": "Troca de Parabrisa",
-                "veiculo": {"modelo": "Honda Civic", "placa": "ABC1234", "ano": "2022"}
+                "veiculo": {"modelo": "Honda Civic", "placa": "ABC1234", "ano": "2022"},
+                "loja": "CarGlass Morumbi",
+                "endereco_loja": "Av. Professor Francisco Morato, 2307 - Butantã",
+                "previsao_conclusao": "hoje às 16h"
             }
         },
         "98765432100": {
@@ -501,15 +504,62 @@ def get_mock_data(tipo: str, valor: str) -> Dict[str, Any]:
                 "ordem": "ORD67890",
                 "status": "Serviço agendado com sucesso",
                 "tipo_servico": "Reparo de Trinca",
-                "veiculo": {"modelo": "Toyota Corolla", "placa": "DEF5678", "ano": "2021"}
+                "veiculo": {"modelo": "Toyota Corolla", "placa": "DEF5678", "ano": "2021"},
+                "loja": "CarGlass Vila Mariana",
+                "endereco_loja": "Rua Domingos de Morais, 1267 - Vila Mariana",
+                "previsao_conclusao": "amanhã às 14h"
+            }
+        },
+        "11122233344": {
+            "sucesso": True,
+            "dados": {
+                "nome": "João Oliveira",
+                "cpf": "11122233344",
+                "telefone": "11955556666",
+                "ordem": "ORD54321",
+                "status": "Aguardando fotos para liberação da ordem",
+                "tipo_servico": "Troca de Vidro Lateral",
+                "veiculo": {"modelo": "Volkswagen Golf", "placa": "GHI9012", "ano": "2023"},
+                "loja": "CarGlass Santo André",
+                "endereco_loja": "Av. Industrial, 600 - Santo André"
+            }
+        },
+        "33344455566": {
+            "sucesso": True,
+            "dados": {
+                "nome": "Ana Costa",
+                "cpf": "33344455566",
+                "telefone": "11944443333",
+                "ordem": "ORD98765",
+                "status": "Concluído",
+                "tipo_servico": "Calibração ADAS",
+                "veiculo": {"modelo": "BMW X3", "placa": "JKL3456", "ano": "2024"},
+                "loja": "CarGlass Morumbi",
+                "endereco_loja": "Av. Professor Francisco Morato, 2307 - Butantã"
             }
         }
     }
     
     # Mapeamentos
-    ordem_para_cpf = {"123456": "12345678900", "ORD12345": "12345678900"}
-    telefone_para_cpf = {"11987654321": "12345678900"}
-    placa_para_cpf = {"ABC1234": "12345678900"}
+    ordem_para_cpf = {
+        "123456": "12345678900", 
+        "ORD12345": "12345678900",
+        "ORD67890": "98765432100",
+        "ORD54321": "11122233344",
+        "ORD98765": "33344455566"
+    }
+    telefone_para_cpf = {
+        "11987654321": "12345678900",
+        "11976543210": "98765432100",
+        "11955556666": "11122233344",
+        "11944443333": "33344455566"
+    }
+    placa_para_cpf = {
+        "ABC1234": "12345678900",
+        "DEF5678": "98765432100",
+        "GHI9012": "11122233344",
+        "JKL3456": "33344455566"
+    }
     
     cpf_key = None
     if tipo == "cpf" and valor in mock_database:
@@ -1013,47 +1063,172 @@ Por favor, forneça um identificador válido:
     dados = client_data['dados']
     nome = dados.get('nome', 'Cliente')
     status = dados.get('status', 'Em processamento')
+    ordem = dados.get('ordem', 'N/A')
+    tipo_servico = dados.get('tipo_servico', 'N/A')
+    veiculo = dados.get('veiculo', {})
+    modelo = veiculo.get('modelo', 'N/A')
+    ano = veiculo.get('ano', 'N/A')
+    placa = veiculo.get('placa', 'N/A')
+    
+    # Resposta conversacional humanizada - SEM tags de status visuais
+    if config.OPENAI_API_KEY:
+        try:
+            import openai
+            openai.api_key = config.OPENAI_API_KEY
+            
+            system_message = f"""
+            Você é Clara, assistente virtual da CarGlass, falando com {nome}.
+            
+            Informações do atendimento:
+            - Ordem: {ordem}
+            - Status atual: {status}
+            - Serviço: {tipo_servico}
+            - Veículo: {modelo} ({ano})
+            - Placa: {placa}
+            
+            IMPORTANTE: 
+            1. Cumprimente o cliente pelo nome
+            2. Explique o status atual de forma conversacional e humana
+            3. Mencione informações úteis como localização da loja e previsão quando relevante
+            4. Seja natural, como se fosse uma pessoa real
+            5. NÃO use tags HTML ou formatação técnica
+            6. Inclua detalhes do veículo e ordem de forma natural
+            7. Termine perguntando como pode ajudar
+            
+            {"Use formato WhatsApp com *negrito* e emojis" if session_data.platform == "whatsapp" else "Use formatação markdown simples"}
+            """
+            
+            response = openai.ChatCompletion.create(
+                model=config.OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": system_message},
+                    {"role": "user", "content": f"Cliente forneceu {tipo}: {valor}"}
+                ],
+                max_tokens=300,
+                temperature=0.7
+            )
+            
+            return response.choices[0].message['content'].strip()
+            
+        except Exception as e:
+            logger.error(f"OpenAI erro na identificação: {e}")
+    
+    # Fallback humanizado sem OpenAI
+    loja = dados.get('loja', 'uma de nossas lojas')
+    endereco_loja = dados.get('endereco_loja', '')
+    previsao = dados.get('previsao_conclusao', '')
     
     if session_data.platform == "whatsapp":
-        # Versão simplificada para WhatsApp
-        status_text = get_whatsapp_status_text(client_data)
-        
-        return f"""
-👋 *Olá {nome}!* Encontrei suas informações.
+        if "agendado" in status.lower():
+            previsao_text = f" com previsão para {previsao}" if previsao else ""
+            endereco_text = f"\n📍 Endereço: {endereco_loja}" if endereco_loja else ""
+            return f"""
+👋 *Olá {nome}!* 
 
-{status_text}
+Sua ordem de serviço {ordem} para *{tipo_servico}* no seu {modelo} ({ano}), placa {placa}, está *agendada*{previsao_text}.
 
-📋 *Resumo:*
-• *Ordem:* {dados.get('ordem', 'N/A')}
-• *Serviço:* {dados.get('tipo_servico', 'N/A')}
-• *Veículo:* {dados.get('veiculo', {}).get('modelo', 'N/A')} ({dados.get('veiculo', {}).get('ano', 'N/A')})
-• *Placa:* {dados.get('veiculo', {}).get('placa', 'N/A')}
+🏪 O serviço será na *{loja}*{endereco_text}
 
-💬 Como posso ajudar?
-Digite *ajuda* para ver opções.
+💬 Como posso te ajudar?
+"""
+        elif "andamento" in status.lower():
+            previsao_text = f" com previsão de conclusão {previsao}" if previsao else ""
+            return f"""
+👋 *Olá {nome}!* 
+
+Sua ordem de serviço {ordem} está *em andamento*. Nossa equipe está trabalhando na {tipo_servico} do seu {modelo} ({ano}), placa {placa}, na *{loja}*{previsao_text}.
+
+🔧 Tudo está correndo bem e dentro do prazo previsto.
+
+💬 Precisa de alguma informação específica?
+"""
+        elif "concluído" in status.lower():
+            endereco_text = f"\n📍 {endereco_loja}" if endereco_loja else ""
+            return f"""
+👋 *Olá {nome}!* 
+
+✅ Ótima notícia! Sua ordem {ordem} foi *concluída* com sucesso. A {tipo_servico} do seu {modelo} ({ano}), placa {placa}, está pronta.
+
+🏪 Você pode retirar na *{loja}*{endereco_text}
+
+💬 Posso te ajudar com mais alguma coisa?
+"""
+        elif "aguardando fotos" in status.lower():
+            return f"""
+👋 *Olá {nome}!* 
+
+Sua ordem {ordem} para {tipo_servico} no seu {modelo} ({ano}), placa {placa}, está *aguardando as fotos* para darmos continuidade.
+
+📷 Você pode enviar pelo nosso sistema ou entrar em contato: *0800-701-9495*
+
+💬 Precisa de ajuda para enviar as fotos?
+"""
+        else:
+            return f"""
+👋 *Olá {nome}!* 
+
+Encontrei sua ordem {ordem} para {tipo_servico} no seu {modelo} ({ano}), placa {placa}. No momento está: *{status}*.
+
+🏪 Atendimento na *{loja}*
+
+💬 Como posso te ajudar?
 """
     else:
-        # Versão completa para web com HTML
-        status_class = "agendado" if "agendado" in status.lower() else "andamento"
-        status_tag = f'<span class="status-tag {status_class}">{status}</span>'
-        
-        progress_bar = get_progress_bar_html(client_data)
-        
-        return f"""
-    👋 **Olá {nome}!** Encontrei suas informações.
-    
-    **Status:** {status_tag}
-    
-    {progress_bar}
-    
-    📋 **Resumo:**
-    • **Ordem:** {dados.get('ordem', 'N/A')}
-    • **Serviço:** {dados.get('tipo_servico', 'N/A')}
-    • **Veículo:** {dados.get('veiculo', {}).get('modelo', 'N/A')} ({dados.get('veiculo', {}).get('ano', 'N/A')})
-    • **Placa:** {dados.get('veiculo', {}).get('placa', 'N/A')}
-    
-    💬 **Como posso ajudar?**
-    """
+        # Versão web
+        if "agendado" in status.lower():
+            previsao_text = f" com previsão para {previsao}" if previsao else ""
+            endereco_text = f"<br>📍 **Endereço:** {endereco_loja}" if endereco_loja else ""
+            return f"""
+👋 **Olá {nome}!** Encontrei suas informações.
+
+Sua ordem de serviço {ordem} para **{tipo_servico}** no seu {modelo} ({ano}), placa {placa}, está **agendada**{previsao_text}.
+
+🏪 **Local:** {loja}{endereco_text}
+
+💬 **Como posso te ajudar?**
+"""
+        elif "andamento" in status.lower():
+            previsao_text = f" com previsão de conclusão {previsao}" if previsao else ""
+            return f"""
+👋 **Olá {nome}!** Encontrei suas informações.
+
+Sua ordem de serviço {ordem} está **em andamento**. Nossa equipe está trabalhando na {tipo_servico} do seu {modelo} ({ano}), placa {placa}, na **{loja}**{previsao_text}.
+
+🔧 Tudo está correndo bem e dentro do prazo previsto.
+
+💬 **Precisa de alguma informação específica?**
+"""
+        elif "concluído" in status.lower():
+            endereco_text = f"<br>📍 {endereco_loja}" if endereco_loja else ""
+            return f"""
+👋 **Olá {nome}!** Encontrei suas informações.
+
+✅ Ótima notícia! Sua ordem {ordem} foi **concluída** com sucesso. A {tipo_servico} do seu {modelo} ({ano}), placa {placa}, está pronta.
+
+🏪 **Retirar na:** {loja}{endereco_text}
+
+💬 **Posso te ajudar com mais alguma coisa?**
+"""
+        elif "aguardando fotos" in status.lower():
+            return f"""
+👋 **Olá {nome}!** Encontrei suas informações.
+
+Sua ordem {ordem} para {tipo_servico} no seu {modelo} ({ano}), placa {placa}, está **aguardando as fotos** para darmos continuidade.
+
+📷 Você pode enviar pelo nosso sistema ou entrar em contato: **0800-701-9495**
+
+💬 **Precisa de ajuda para enviar as fotos?**
+"""
+        else:
+            return f"""
+👋 **Olá {nome}!** Encontrei suas informações.
+
+Sua ordem {ordem} para {tipo_servico} no seu {modelo} ({ano}), placa {placa}, está com status: **{status}**.
+
+🏪 **Atendimento:** {loja}
+
+💬 **Como posso te ajudar?**
+"""
 
 @app.route('/reset', methods=['POST'])
 def reset():
