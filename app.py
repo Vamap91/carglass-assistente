@@ -478,6 +478,47 @@ def get_warranty_response(dados: Dict[str, Any], platform: str) -> str:
     else:
         return f"🛡️ **Garantia CarGlass:** 12 meses para {servico}, cobrindo defeitos de instalação e vedação. Válida em qualquer unidade CarGlass."
 
+def get_technician_response(dados: Dict[str, Any], platform: str) -> str:
+    """Resposta sobre técnico responsável"""
+    tecnico = dados.get('tecnico_responsavel', 'A designar')
+    
+    if platform == "whatsapp":
+        return f"👨‍🔧 *Técnico responsável:* {tecnico}\n\nNossa equipe é especializada e certificada CarGlass!"
+    else:
+        return f"👨‍🔧 **Técnico responsável:** {tecnico}. Nossa equipe é especializada e certificada CarGlass."
+
+def get_cancellation_response(dados: Dict[str, Any], platform: str) -> str:
+    """Resposta sobre cancelamento"""
+    if platform == "whatsapp":
+        return f"""
+❌ *Para cancelar seu serviço:*
+
+📞 *Central:* 0800-701-9495
+📱 *WhatsApp:* (11) 4003-8070
+
+⏰ *Horário:* Segunda a Sexta: 8h às 18h
+
+*Importante:* Cancelamentos com menos de 24h podem ter taxa.
+"""
+    else:
+        return "❌ **Para cancelar:** Entre em contato com nossa central **0800-701-9495**. Cancelamentos com menos de 24h podem ter taxa."
+
+def get_reschedule_response(dados: Dict[str, Any], platform: str) -> str:
+    """Resposta sobre reagendamento"""
+    if platform == "whatsapp":
+        return f"""
+🔄 *Para reagendar seu serviço:*
+
+📞 *Central:* 0800-701-9495
+📱 *WhatsApp:* (11) 4003-8070
+
+⏰ *Horário:* Segunda a Sexta: 8h às 18h
+
+*Reagendamentos são gratuitos!*
+"""
+    else:
+        return "🔄 **Para reagendar:** Entre em contato com nossa central **0800-701-9495**. Reagendamentos são gratuitos!"
+
 def get_status_contextual_response(dados: Dict[str, Any], pergunta: str, platform: str) -> str:
     """Resposta contextual baseada no status e pergunta"""
     status = dados.get('status', '')
@@ -520,7 +561,7 @@ def get_human_contact_response(platform: str) -> str:
         ⏰ **Horário:** Segunda a Sexta: 8h às 18h, Sábado: 8h às 12h
         """
 
-# ===== TWILIO WHATSAPP HANDLER (mantido do código original) =====
+# ===== TWILIO WHATSAPP HANDLER =====
 class TwilioWhatsAppHandler:
     def __init__(self):
         self.account_sid = config.TWILIO_ACCOUNT_SID
@@ -575,7 +616,7 @@ class TwilioWhatsAppHandler:
             logger.error(f"❌ Erro ao enviar mensagem Twilio: {e}")
             return False
 
-# ===== UTILITÁRIOS E RESTO DO CÓDIGO (mantidos do original) =====
+# ===== UTILITÁRIOS =====
 def get_current_time() -> str:
     return time.strftime("%H:%M")
 
@@ -815,8 +856,8 @@ def get_client_data(tipo: str, valor: str) -> Dict[str, Any]:
         return cached_result
     
     if config.USE_REAL_API:
-        import requests
         try:
+            import requests
             api_urls = {
                 "cpf": "http://fusion-hml.carglass.hml.local:3000/api/status/cpf/",
                 "telefone": "http://fusion-hml.carglass.hml.local:3000/api/status/telefone/",
