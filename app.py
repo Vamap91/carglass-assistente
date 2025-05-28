@@ -698,9 +698,33 @@ def get_ai_response(pergunta: str, cliente_info: Dict[str, Any], platform: str =
             return "🔄 *Consulta reiniciada!*\n\nDigite seu *CPF*, *telefone* ou *placa do veículo* para nova consulta."
     
     # Respostas predefinidas (adaptadas para WhatsApp se necessário)
-    if any(keyword in pergunta_lower for keyword in ['loja', 'local', 'onde', 'endereço']):
-        if platform == "whatsapp":
-            return """
+    if any(keyword in pergunta_lower for keyword in ['loja', 'local', 'onde', 'endereço', 'trocar de loja', 'mudar local', 'mudar loja']):
+        if any(keyword in pergunta_lower for keyword in ['trocar', 'mudar', 'alterar', 'escolher']):
+            # Cliente quer trocar/mudar de loja
+            if platform == "whatsapp":
+                return f"""
+🏪 Para trocar de loja é necessário consultar as lojas previamente.
+
+Por favor, {cliente_info.get('dados', {}).get('nome', 'cliente')}, entre em contato com nossa central de atendimento:
+
+📞 *0800-701-9495*
+
+Eles vão te ajudar a escolher a melhor loja para você! 😊
+"""
+            else:
+                return f"""
+🏪 **Para trocar de loja é necessário consultar as lojas previamente.**
+
+Por favor, {cliente_info.get('dados', {}).get('nome', 'cliente')}, entre em contato com nossa central de atendimento:
+
+📞 **0800-701-9495**
+
+Eles vão te ajudar a escolher a melhor loja para você!
+"""
+        else:
+            # Cliente apenas quer saber sobre lojas (informativo)
+            if platform == "whatsapp":
+                return """
 🏪 *Lojas CarGlass próximas:*
 
 📍 *CarGlass Morumbi*
@@ -715,18 +739,18 @@ Vila Mariana - São Paulo
 Av. Industrial, 600
 Santo André
 
-📞 *Mudar local:* 0800-701-9495
+📞 *Para escolher sua loja:* 0800-701-9495
 """
-        else:
-            return """
-        🏪 **Lojas CarGlass próximas:**
-        
-        • **CarGlass Morumbi**: Av. Professor Francisco Morato, 2307 - Butantã
-        • **CarGlass Vila Mariana**: Rua Domingos de Morais, 1267 - Vila Mariana
-        • **CarGlass Santo André**: Av. Industrial, 600 - Santo André
-        
-        📞 Para mudar local: **0800-701-9495**
-        """
+            else:
+                return """
+🏪 **Lojas CarGlass próximas:**
+
+• **CarGlass Morumbi**: Av. Professor Francisco Morato, 2307 - Butantã
+• **CarGlass Vila Mariana**: Rua Domingos de Morais, 1267 - Vila Mariana
+• **CarGlass Santo André**: Av. Industrial, 600 - Santo André
+
+📞 **Para escolher sua loja:** 0800-701-9495
+"""
     
     if any(keyword in pergunta_lower for keyword in ['garantia', 'seguro']):
         tipo_servico = cliente_info.get('dados', {}).get('tipo_servico', 'seu serviço')
@@ -1089,11 +1113,12 @@ Por favor, forneça um identificador válido:
             IMPORTANTE: 
             1. Cumprimente o cliente pelo nome
             2. Explique o status atual de forma conversacional e humana
-            3. Mencione informações úteis como localização da loja e previsão quando relevante
-            4. Seja natural, como se fosse uma pessoa real
-            5. NÃO use tags HTML ou formatação técnica
-            6. Inclua detalhes do veículo e ordem de forma natural
-            7. Termine perguntando como pode ajudar
+            3. NUNCA mencione loja específica - se precisar falar de local, diga apenas "nossa equipe" ou "uma de nossas unidades"
+            4. Se cliente perguntar sobre loja, oriente para ligar 0800-701-9495
+            5. Seja natural, como se fosse uma pessoa real
+            6. NÃO use tags HTML ou formatação técnica
+            7. Inclua detalhes do veículo e ordem de forma natural
+            8. Termine perguntando como pode ajudar
             
             {"Use formato WhatsApp com *negrito* e emojis" if session_data.platform == "whatsapp" else "Use formatação markdown simples"}
             """
@@ -1114,20 +1139,17 @@ Por favor, forneça um identificador válido:
             logger.error(f"OpenAI erro na identificação: {e}")
     
     # Fallback humanizado sem OpenAI
-    loja = dados.get('loja', 'uma de nossas lojas')
-    endereco_loja = dados.get('endereco_loja', '')
     previsao = dados.get('previsao_conclusao', '')
     
     if session_data.platform == "whatsapp":
         if "agendado" in status.lower():
             previsao_text = f" com previsão para {previsao}" if previsao else ""
-            endereco_text = f"\n📍 Endereço: {endereco_loja}" if endereco_loja else ""
             return f"""
 👋 *Olá {nome}!* 
 
 Sua ordem de serviço {ordem} para *{tipo_servico}* no seu {modelo} ({ano}), placa {placa}, está *agendada*{previsao_text}.
 
-🏪 O serviço será na *{loja}*{endereco_text}
+🏪 Nossa equipe já está organizando tudo para você.
 
 💬 Como posso te ajudar?
 """
@@ -1136,20 +1158,19 @@ Sua ordem de serviço {ordem} para *{tipo_servico}* no seu {modelo} ({ano}), pla
             return f"""
 👋 *Olá {nome}!* 
 
-Sua ordem de serviço {ordem} está *em andamento*. Nossa equipe está trabalhando na {tipo_servico} do seu {modelo} ({ano}), placa {placa}, na *{loja}*{previsao_text}.
+Sua ordem de serviço {ordem} está *em andamento*. Nossa equipe está trabalhando na {tipo_servico} do seu {modelo} ({ano}), placa {placa}{previsao_text}.
 
 🔧 Tudo está correndo bem e dentro do prazo previsto.
 
 💬 Precisa de alguma informação específica?
 """
         elif "concluído" in status.lower():
-            endereco_text = f"\n📍 {endereco_loja}" if endereco_loja else ""
             return f"""
 👋 *Olá {nome}!* 
 
 ✅ Ótima notícia! Sua ordem {ordem} foi *concluída* com sucesso. A {tipo_servico} do seu {modelo} ({ano}), placa {placa}, está pronta.
 
-🏪 Você pode retirar na *{loja}*{endereco_text}
+🏪 Você pode retirar seu veículo em nossa unidade.
 
 💬 Posso te ajudar com mais alguma coisa?
 """
@@ -1169,7 +1190,7 @@ Sua ordem {ordem} para {tipo_servico} no seu {modelo} ({ano}), placa {placa}, es
 
 Encontrei sua ordem {ordem} para {tipo_servico} no seu {modelo} ({ano}), placa {placa}. No momento está: *{status}*.
 
-🏪 Atendimento na *{loja}*
+🏪 Nossa equipe está cuidando de tudo para você.
 
 💬 Como posso te ajudar?
 """
@@ -1177,13 +1198,12 @@ Encontrei sua ordem {ordem} para {tipo_servico} no seu {modelo} ({ano}), placa {
         # Versão web
         if "agendado" in status.lower():
             previsao_text = f" com previsão para {previsao}" if previsao else ""
-            endereco_text = f"<br>📍 **Endereço:** {endereco_loja}" if endereco_loja else ""
             return f"""
 👋 **Olá {nome}!** Encontrei suas informações.
 
 Sua ordem de serviço {ordem} para **{tipo_servico}** no seu {modelo} ({ano}), placa {placa}, está **agendada**{previsao_text}.
 
-🏪 **Local:** {loja}{endereco_text}
+🏪 **Nossa equipe já está organizando tudo para você.**
 
 💬 **Como posso te ajudar?**
 """
@@ -1192,20 +1212,19 @@ Sua ordem de serviço {ordem} para **{tipo_servico}** no seu {modelo} ({ano}), p
             return f"""
 👋 **Olá {nome}!** Encontrei suas informações.
 
-Sua ordem de serviço {ordem} está **em andamento**. Nossa equipe está trabalhando na {tipo_servico} do seu {modelo} ({ano}), placa {placa}, na **{loja}**{previsao_text}.
+Sua ordem de serviço {ordem} está **em andamento**. Nossa equipe está trabalhando na {tipo_servico} do seu {modelo} ({ano}), placa {placa}{previsao_text}.
 
 🔧 Tudo está correndo bem e dentro do prazo previsto.
 
 💬 **Precisa de alguma informação específica?**
 """
         elif "concluído" in status.lower():
-            endereco_text = f"<br>📍 {endereco_loja}" if endereco_loja else ""
             return f"""
 👋 **Olá {nome}!** Encontrei suas informações.
 
 ✅ Ótima notícia! Sua ordem {ordem} foi **concluída** com sucesso. A {tipo_servico} do seu {modelo} ({ano}), placa {placa}, está pronta.
 
-🏪 **Retirar na:** {loja}{endereco_text}
+🏪 **Você pode retirar seu veículo em nossa unidade.**
 
 💬 **Posso te ajudar com mais alguma coisa?**
 """
@@ -1225,7 +1244,7 @@ Sua ordem {ordem} para {tipo_servico} no seu {modelo} ({ano}), placa {placa}, es
 
 Sua ordem {ordem} para {tipo_servico} no seu {modelo} ({ano}), placa {placa}, está com status: **{status}**.
 
-🏪 **Atendimento:** {loja}
+🏪 **Nossa equipe está cuidando de tudo para você.**
 
 💬 **Como posso te ajudar?**
 """
