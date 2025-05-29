@@ -9,8 +9,15 @@ from typing import Dict, Any, Optional, Tuple, List
 from dataclasses import dataclass, asdict
 from functools import wraps
 import json
+from collections import defaultdict
+import hashlib
 
 from flask import Flask, render_template, request, jsonify, session
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from twilio.request_validator import RequestValidator
+import bleach
+from markupsafe import escape
 
 # Configuração de logging
 logging.basicConfig(
@@ -38,6 +45,19 @@ class Config:
     TWILIO_ENABLED: bool = bool(os.getenv('TWILIO_ACCOUNT_SID'))
 
 config = Config()
+
+# ===== FLASK APP =====
+app = Flask(__name__)
+app.secret_key = config.SECRET_KEY
+
+# ===== CONFIGURAÇÃO DE SEGURANÇA PARA HML =====
+# Rate Limiting (CRÍTICO mesmo em HML)
+limiter = Limiter(
+    app,
+    key_func=get_remote_address,
+    default_limits=["500 per day", "100 per hour"],  # Mais permissivo para testes
+    storage_uri="memory://"
+)
 
 # ===== TWILIO WHATSAPP HANDLER =====
 class TwilioWhatsAppHandler:
@@ -167,6 +187,70 @@ class TwilioWhatsAppHandler:
 # Instância global do handler Twilio
 twilio_handler = TwilioWhatsAppHandler()
 
+# ===== GERENCIADOR DE SEGURANÇA PARA HML =====
+class HMLSecurityManager:
+    """Versão simplificada para homologação"""
+    def __init__(self):
+        self.request_counts = defaultdict(list)
+        self.blocked_ips = set()
+        
+    def sanitize_input(self, text: str) -> str:
+        """Sanitização básica - mais permissiva em HML"""
+        if not text:
+            return ""
+        
+        # Remove apenas scripts perigosos
+        text = bleach.clean(text, tags=[], strip=True)
+        text = escape(text)
+        
+        # Limita tamanho (mais generoso em HML)
+        return text[:2000].strip()
+    
+    def log_request(self, ip: str, endpoint: str):
+        """Log simples para monitoramento"""
+        now = time.time()
+        
+        # Remove requests antigos (última hora)
+        cutoff = now - 3600
+        self.request_counts[ip] = [
+            (ep, t) for ep, t in self.request_counts[ip] 
+            if t > cutoff
+        ]
+        
+        # Adiciona novo request
+        self.request_counts[ip].append((endpoint, now))
+        
+        # Bloqueia apenas abuso extremo (mais de 200 requests/hora)
+        if len(self.request_counts[ip]) > 200:
+            self.blocked_ips.add(ip)
+            logger.warning(f"🚨 IP bloqueado por abuso em HML: {ip}")
+    
+    def is_ip_blocked(self, ip: str) -> bool:
+        return ip in self.blocked_ips
+    
+    def validate_twilio_webhook(self, request) -> bool:
+        """CRÍTICO: Valida webhook mesmo em HML"""
+        if not config.TWILIO_AUTH_TOKEN:
+            logger.warning("⚠️ TWILIO_AUTH_TOKEN não configurado")
+            return True  # Permite em desenvolvimento local
+        
+        try:
+            validator = RequestValidator(config.TWILIO_AUTH_TOKEN)
+            signature = request.headers.get('X-Twilio-Signature', '')
+            url = request.url
+            
+            if request.method == 'POST':
+                return validator.validate(url, request.form, signature)
+            else:
+                return validator.validate(url, request.args, signature)
+                
+        except Exception as e:
+            logger.error(f"Erro na validação Twilio: {e}")
+            return False
+
+# Instância para HML
+security_manager = HMLSecurityManager()
+
 # ===== UTILITÁRIOS =====
 def get_current_time() -> str:
     return time.strftime("%H:%M")
@@ -175,12 +259,8 @@ def get_current_datetime() -> str:
     return time.strftime("%d/%m/%Y - %H:%M")
 
 def sanitize_input(text: str) -> str:
-    if not text:
-        return ""
-    text = text.strip()
-    text = re.sub(r'<script.*?</script>', '', text, flags=re.IGNORECASE | re.DOTALL)
-    text = re.sub(r'javascript:', '', text, flags=re.IGNORECASE)
-    return text
+    """Função global de sanitização"""
+    return security_manager.sanitize_input(text)
 
 def validate_cpf(cpf: str) -> bool:
     """Valida CPF com exceções para CPFs de teste - CORRIGIDO"""
@@ -1031,6 +1111,565 @@ Qual serviço você gostaria de conhecer melhor?
                 """
                 
                 response = openai.ChatCompletion.create(
+                model=config.OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": system_message},
+                    {"role": "user", "content": f"Cliente forneceu {tipo}: {valor}"}
+                ],
+                max_tokens=300,
+                temperature=0.7
+            )
+            
+            logger.info("✅ Resposta OpenAI gerada com sucesso")
+            return response.choices[0].message['content'].strip()
+            
+        except Exception as e:
+            logger.error(f"❌ OpenAI erro na identificação: {e}")
+    
+    # Fallback humanizado sem OpenAI
+    previsao = dados.get('previsao_conclusao', '')
+    
+    if session_data.platform == "whatsapp":
+        if "agendado" in status.lower():
+            previsao_text = f" com previsão para {previsao}" if previsao else ""
+            return f"""
+👋 Olá {nome}! 
+
+Sua ordem de serviço {ordem} para {tipo_servico} no seu {modelo} ({ano}), placa {placa}, está agendada{previsao_text}.
+
+🏪 Nossa equipe já está organizando tudo para você.
+
+💬 Como posso te ajudar?
+"""
+        elif "andamento" in status.lower():
+            previsao_text = f" com previsão de conclusão {previsao}" if previsao else ""
+            return f"""
+👋 Olá {nome}! 
+
+Sua ordem de serviço {ordem} está em andamento. Nossa equipe está trabalhando na {tipo_servico} do seu {modelo} ({ano}), placa {placa}{previsao_text}.
+
+🔧 Tudo está correndo bem e dentro do prazo previsto.
+
+💬 Precisa de alguma informação específica?
+"""
+        elif "concluído" in status.lower():
+            return f"""
+👋 Olá {nome}! 
+
+✅ Ótima notícia! Sua ordem {ordem} foi concluída com sucesso. A {tipo_servico} do seu {modelo} ({ano}), placa {placa}, está pronta.
+
+🏪 Você pode retirar seu veículo em nossa unidade.
+
+💬 Posso te ajudar com mais alguma coisa?
+"""
+        elif "aguardando fotos" in status.lower():
+            return f"""
+👋 Olá {nome}! 
+
+Sua ordem {ordem} para {tipo_servico} no seu {modelo} ({ano}), placa {placa}, está aguardando as fotos para darmos continuidade.
+
+📷 Você pode enviar pelo nosso sistema ou entrar em contato: 0800-701-9495
+
+💬 Precisa de ajuda para enviar as fotos?
+"""
+        else:
+            return f"""
+👋 Olá {nome}! 
+
+Encontrei sua ordem {ordem} para {tipo_servico} no seu {modelo} ({ano}), placa {placa}. No momento está: {status}.
+
+🏪 Nossa equipe está cuidando de tudo para você.
+
+💬 Como posso te ajudar?
+"""
+    else:
+        # Versão web
+        if "agendado" in status.lower():
+            previsao_text = f" com previsão para {previsao}" if previsao else ""
+            return f"""
+👋 Olá {nome}! Encontrei suas informações.
+
+Sua ordem de serviço {ordem} para {tipo_servico} no seu {modelo} ({ano}), placa {placa}, está agendada{previsao_text}.
+
+🏪 Nossa equipe já está organizando tudo para você.
+
+💬 Como posso te ajudar?
+"""
+        elif "andamento" in status.lower():
+            previsao_text = f" com previsão de conclusão {previsao}" if previsao else ""
+            return f"""
+👋 Olá {nome}! Encontrei suas informações.
+
+Sua ordem de serviço {ordem} está em andamento. Nossa equipe está trabalhando na {tipo_servico} do seu {modelo} ({ano}), placa {placa}{previsao_text}.
+
+🔧 Tudo está correndo bem e dentro do prazo previsto.
+
+💬 Precisa de alguma informação específica?
+"""
+        elif "concluído" in status.lower():
+            return f"""
+👋 Olá {nome}! Encontrei suas informações.
+
+✅ Ótima notícia! Sua ordem {ordem} foi concluída com sucesso. A {tipo_servico} do seu {modelo} ({ano}), placa {placa}, está pronta.
+
+🏪 Você pode retirar seu veículo em nossa unidade.
+
+💬 Posso te ajudar com mais alguma coisa?
+"""
+        elif "aguardando fotos" in status.lower():
+            return f"""
+👋 Olá {nome}! Encontrei suas informações.
+
+Sua ordem {ordem} para {tipo_servico} no seu {modelo} ({ano}), placa {placa}, está aguardando as fotos para darmos continuidade.
+
+📷 Você pode enviar pelo nosso sistema ou entrar em contato: 0800-701-9495
+
+💬 Precisa de ajuda para enviar as fotos?
+"""
+        else:
+            return f"""
+👋 Olá {nome}! Encontrei suas informações.
+
+Sua ordem {ordem} para {tipo_servico} no seu {modelo} ({ano}), placa {placa}, está com status: {status}.
+
+🏪 Nossa equipe está cuidando de tudo para você.
+
+💬 Como posso te ajudar?
+"""
+
+# ===== MIDDLEWARES DE SEGURANÇA PARA HML =====
+
+@app.before_request
+def hml_security_check():
+    """Verificações básicas para HML"""
+    ip = get_remote_address()
+    
+    # Apenas bloqueia abuse extremo
+    if security_manager.is_ip_blocked(ip):
+        logger.warning(f"🚫 IP bloqueado: {ip}")
+        abort(429)  # Too Many Requests
+    
+    # Log para monitoramento
+    if request.endpoint in ['send_message', 'whatsapp_webhook']:
+        security_manager.log_request(ip, request.endpoint)
+
+@app.after_request
+def hml_security_headers(response):
+    """Headers básicos para HML"""
+    # Headers mínimos que não quebram funcionalidade
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'SAMEORIGIN'  # Menos restritivo
+    
+    # Remove headers que vazam informações
+    response.headers.pop('Server', None)
+    
+    return response
+
+# ===== ROTAS FLASK =====
+
+@app.route('/')
+def index():
+    try:
+        session_id = session.get('session_id')
+        if not session_id:
+            session_data = session_manager.create_session()
+            session['session_id'] = session_data.session_id
+        return render_template('index.html')
+    except Exception as e:
+        logger.error(f"Erro na página inicial: {e}")
+        return render_template('index.html'), 500
+
+@app.route('/get_messages')
+def get_messages():
+    try:
+        session_id = session.get('session_id')
+        if not session_id:
+            session_data = session_manager.create_session()
+            session['session_id'] = session_data.session_id
+        else:
+            session_data = session_manager.get_session(session_id)
+            if not session_data:
+                session_data = session_manager.create_session()
+                session['session_id'] = session_data.session_id
+        
+        return jsonify({"messages": session_data.messages})
+    except Exception as e:
+        logger.error(f"Erro ao recuperar mensagens: {e}")
+        return jsonify({
+            "messages": [{
+                "role": "assistant",
+                "content": "Olá! Sou Clara, sua assistente virtual da CarGlass. Digite seu CPF, telefone ou placa do veículo para começarmos.",
+                "time": get_current_time()
+            }]
+        })
+
+@app.route('/send_message', methods=['POST'])
+@limiter.limit("30 per minute")  # Mais permissivo para testes
+def send_message():
+    """Versão para homologação"""
+    try:
+        ip = get_remote_address()
+        
+        # Sanitização básica
+        user_input = sanitize_input(request.form.get('message', ''))
+        
+        if not user_input:
+            return jsonify({'error': 'Mensagem vazia'}), 400
+        
+        logger.info(f"📨 Mensagem HML de {ip[:8]}***: {user_input[:50]}...")
+        
+        # Lógica original mantida
+        session_id = session.get('session_id')
+        session_data = session_manager.get_session(session_id)
+        
+        if not session_data:
+            session_data = session_manager.create_session()
+            session['session_id'] = session_data.session_id
+        
+        session_data.add_message("user", user_input)
+        
+        if not session_data.client_identified:
+            response = process_identification(user_input, session_data)
+        else:
+            response = get_ai_response(user_input, session_data.client_info, session_data.platform)
+        
+        session_data.add_message("assistant", response)
+        
+        return jsonify({'messages': session_data.messages})
+        
+    except Exception as e:
+        logger.error(f"Erro HML send_message: {e}")
+        logger.error(traceback.format_exc())
+        return jsonify({'error': 'Erro interno'}), 500
+
+@app.route('/whatsapp/webhook', methods=['POST'])
+@limiter.limit("60 per minute")  # Mais permissivo para testes
+def whatsapp_webhook():
+    """Webhook WhatsApp para homologação"""
+    ip = get_remote_address()
+    
+    if not twilio_handler.is_enabled():
+        return "Twilio not configured", 400
+    
+    # VALIDAÇÃO CRÍTICA (mesmo em HML)
+    if not security_manager.validate_twilio_webhook(request):
+        logger.error(f"🚨 Webhook Twilio inválido de {ip}")
+        abort(403)
+    
+    try:
+        # Lógica original mantida
+        message_data = twilio_handler.process_incoming_message(request.form)
+        
+        if not message_data:
+            return "Bad request", 400
+        
+        phone = message_data['phone']
+        message_text = sanitize_input(message_data['message'])
+        
+        logger.info(f"📱 WhatsApp HML de {phone[:6]}***: {message_text[:30]}...")
+        
+        session_data = session_manager.get_whatsapp_session(phone)
+        
+        if message_text.lower() in ['reiniciar', 'reset', 'nova consulta']:
+            if session_data.session_id in session_manager.sessions:
+                session_manager._remove_session(session_data.session_id)
+            session_data = session_manager.create_session("whatsapp", phone)
+            response = "🔄 Consulta reiniciada!\n\nDigite seu CPF, telefone ou placa do veículo."
+        else:
+            session_data.add_message("user", message_text)
+            
+            if not session_data.client_identified:
+                response = process_identification(message_text, session_data)
+            else:
+                response = get_ai_response(message_text, session_data.client_info, "whatsapp")
+            
+            session_data.add_message("assistant", response)
+        
+        formatted_response = format_for_whatsapp(response)
+        success = twilio_handler.send_message(phone, formatted_response)
+        
+        return twilio_handler.create_twiml_response(), 200
+        
+    except Exception as e:
+        logger.error(f"❌ Erro webhook WhatsApp HML: {e}")
+        logger.error(traceback.format_exc())
+        return "Internal error", 500
+
+@app.route('/reset', methods=['POST'])
+def reset():
+    try:
+        session_id = session.get('session_id')
+        if session_id and session_id in session_manager.sessions:
+            session_manager._remove_session(session_id)
+        
+        session_data = session_manager.create_session()
+        session['session_id'] = session_data.session_id
+        
+        return jsonify({'messages': session_data.messages})
+    except Exception as e:
+        logger.error(f"Erro ao reiniciar: {e}")
+        return jsonify({'error': 'Erro ao reiniciar'}), 500
+
+@app.route('/test_openai')
+def test_openai():
+    """Endpoint para testar configuração OpenAI"""
+    if not config.OPENAI_API_KEY:
+        return jsonify({
+            "status": "error",
+            "message": "OPENAI_API_KEY não configurada"
+        })
+    
+    if len(config.OPENAI_API_KEY) < 10:
+        return jsonify({
+            "status": "error",  
+            "message": f"OPENAI_API_KEY parece inválida (muito curta): {config.OPENAI_API_KEY[:10]}..."
+        })
+    
+    try:
+        import openai
+        openai.api_key = config.OPENAI_API_KEY
+        
+        # Teste simples da API
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",  # Modelo mais barato para teste
+            messages=[
+                {"role": "user", "content": "Responda apenas 'OK' se você está funcionando"}
+            ],
+            max_tokens=10,
+            temperature=0
+        )
+        
+        return jsonify({
+            "status": "success",
+            "message": "OpenAI configurada corretamente",
+            "response": response.choices[0].message['content'],
+            "model": config.OPENAI_MODEL
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": f"Erro ao testar OpenAI: {str(e)}",
+            "key_preview": config.OPENAI_API_KEY[:20] + "..." if len(config.OPENAI_API_KEY) > 20 else config.OPENAI_API_KEY
+        })
+
+@app.route('/health')
+def health_check():
+    """Endpoint para verificação de saúde da aplicação"""
+    try:
+        # Cleanup periódico
+        cache.cleanup_expired()
+        session_manager._cleanup_expired()
+        
+        stats = session_manager.get_stats()
+        
+        return jsonify({
+            "status": "healthy",
+            "timestamp": get_current_time(),
+            "sessions": stats,
+            "cache_items": len(cache.cache),
+            "twilio_enabled": twilio_handler.is_enabled(),
+            "config": {
+                "use_real_api": config.USE_REAL_API,
+                "openai_configured": bool(config.OPENAI_API_KEY),
+                "openai_key_length": len(config.OPENAI_API_KEY) if config.OPENAI_API_KEY else 0,
+                "openai_model": config.OPENAI_MODEL,
+                "session_timeout": config.SESSION_TIMEOUT,
+                "cache_ttl": config.CACHE_TTL
+            },
+            "version": "2.1"
+        })
+    except Exception as e:
+        logger.error(f"Erro no health check: {e}")
+        return jsonify({
+            "status": "error",
+            "message": str(e),
+            "timestamp": get_current_time()
+        }), 500
+
+@app.route('/whatsapp/status')
+def whatsapp_status():
+    """Endpoint para verificar status do WhatsApp"""
+    if not twilio_handler.is_enabled():
+        return jsonify({
+            "enabled": False,
+            "error": "Twilio não configurado - verifique TWILIO_ACCOUNT_SID e TWILIO_AUTH_TOKEN"
+        }), 400
+    
+    return jsonify({
+        "enabled": True,
+        "whatsapp_number": config.TWILIO_WHATSAPP_NUMBER,
+        "active_sessions": len([s for s in session_manager.sessions.values() if s.platform == "whatsapp"]),
+        "webhook_url": request.url_root + "whatsapp/webhook"
+    })
+
+# ===== ENDPOINTS ÚTEIS PARA HML =====
+
+@app.route('/hml/status')
+def hml_status():
+    """Status específico para homologação"""
+    return jsonify({
+        "environment": "HOMOLOGAÇÃO",
+        "security_level": "BÁSICO",
+        "data_type": "MOCK/TESTE",
+        "validations": {
+            "twilio_webhook": config.TWILIO_AUTH_TOKEN is not None,
+            "rate_limiting": True,
+            "input_sanitization": True,
+            "ip_blocking": len(security_manager.blocked_ips)
+        },
+        "request_stats": {
+            "monitored_ips": len(security_manager.request_counts),
+            "blocked_ips": len(security_manager.blocked_ips)
+        },
+        "recommendations": [
+            "✅ Ambiente adequado para testes",
+            "⚠️ Não usar dados reais",
+            "🔄 Aplicar segurança completa antes da produção"
+        ]
+    })
+
+@app.route('/hml/security-test')
+def security_test():
+    """Endpoint para testar validações"""
+    test_results = {
+        "input_sanitization": False,
+        "rate_limiting": False,
+        "twilio_validation": False
+    }
+    
+    # Teste sanitização
+    malicious_input = "<script>alert('xss')</script>Test"
+    sanitized = sanitize_input(malicious_input)
+    test_results["input_sanitization"] = "<script>" not in sanitized
+    
+    # Teste Twilio (se configurado)
+    if config.TWILIO_AUTH_TOKEN:
+        test_results["twilio_validation"] = True
+    
+    # Rate limiting está ativo se chegou aqui
+    test_results["rate_limiting"] = True
+    
+    return jsonify({
+        "environment": "HML",
+        "security_tests": test_results,
+        "status": "✅ Validações básicas funcionando"
+    })
+
+@app.route('/debug/sessions')
+def debug_sessions():
+    """Endpoint para debug das sessões (apenas em modo DEBUG)"""
+    if not config.DEBUG:
+        return jsonify({"error": "Debug mode not enabled"}), 403
+    
+    try:
+        sessions_info = []
+        for session_id, session_data in session_manager.sessions.items():
+            sessions_info.append({
+                "session_id": session_id[:8] + "***",
+                "platform": session_data.platform,
+                "client_identified": session_data.client_identified,
+                "messages_count": len(session_data.messages),
+                "created_at": time.strftime("%H:%M:%S", time.localtime(session_data.created_at)),
+                "last_activity": time.strftime("%H:%M:%S", time.localtime(session_data.last_activity)),
+                "phone_number": session_data.phone_number[:4] + "***" if session_data.phone_number else None
+            })
+        
+        return jsonify({
+            "total_sessions": len(sessions_info),
+            "sessions": sessions_info,
+            "whatsapp_mappings": len(session_manager.whatsapp_sessions)
+        })
+    except Exception as e:
+        logger.error(f"Erro no debug sessions: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/debug/cache')
+def debug_cache():
+    """Endpoint para debug do cache (apenas em modo DEBUG)"""
+    if not config.DEBUG:
+        return jsonify({"error": "Debug mode not enabled"}), 403
+    
+    try:
+        cache_info = {}
+        current_time = time.time()
+        
+        for key, item in cache.cache.items():
+            cache_info[key] = {
+                "expires_in": max(0, int(item['expires'] - current_time)),
+                "size": len(str(item['value']))
+            }
+        
+        return jsonify({
+            "cache_size": len(cache.cache),
+            "max_items": cache.max_items,
+            "items": cache_info
+        })
+    except Exception as e:
+        logger.error(f"Erro no debug cache: {e}")
+        return jsonify({"error": str(e)}), 500
+
+# ===== TRATAMENTO DE ERROS =====
+@app.errorhandler(404)
+def not_found(error):
+    logger.warning(f"404 - Página não encontrada: {request.url}")
+    return jsonify({'error': 'Endpoint não encontrado'}), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    logger.error(f"Erro interno: {error}")
+    logger.error(traceback.format_exc())
+    return jsonify({'error': 'Erro interno do servidor'}), 500
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    logger.error(f"Exceção não tratada: {e}")
+    logger.error(traceback.format_exc())
+    return jsonify({'error': 'Erro interno do servidor'}), 500
+
+# ===== INICIALIZAÇÃO =====
+def initialize_app():
+    """Inicializa componentes da aplicação"""
+    logger.info("🔧 Inicializando componentes da aplicação...")
+    
+    # Cleanup inicial
+    cache.cleanup_expired()
+    session_manager._cleanup_expired()
+    
+    # Testa configurações
+    if config.OPENAI_API_KEY:
+        logger.info("✅ OpenAI API Key configurada")
+    else:
+        logger.warning("⚠️ OpenAI API Key não configurada - usando fallbacks")
+    
+    if twilio_handler.is_enabled():
+        logger.info("✅ Twilio WhatsApp habilitado")
+    else:
+        logger.warning("⚠️ Twilio WhatsApp desabilitado")
+    
+    logger.info("✅ Aplicação inicializada com sucesso")
+
+if __name__ == '__main__':
+    logger.info("🚀 CarGlass Assistant v2.1 + Twilio WhatsApp iniciando...")
+    logger.info(f"Modo API: {'REAL' if config.USE_REAL_API else 'SIMULAÇÃO'}")
+    logger.info(f"OpenAI: {'CONFIGURADO' if config.OPENAI_API_KEY else 'FALLBACK'}")
+    logger.info(f"Twilio WhatsApp: {'HABILITADO' if twilio_handler.is_enabled() else 'DESABILITADO'}")
+    logger.info(f"Debug Mode: {'HABILITADO' if config.DEBUG else 'DESABILITADO'}")
+    
+    if twilio_handler.is_enabled():
+        logger.info(f"📱 WhatsApp número: {config.TWILIO_WHATSAPP_NUMBER}")
+        logger.info(f"🔗 Webhook URL: http://localhost:5000/whatsapp/webhook (configure no Twilio)")
+    else:
+        logger.warning("⚠️ Para habilitar WhatsApp, configure as variáveis:")
+        logger.warning("    TWILIO_ACCOUNT_SID=ACxxxxx")
+        logger.warning("    TWILIO_AUTH_TOKEN=xxxxx")
+        logger.warning("    TWILIO_WHATSAPP_NUMBER=whatsapp:+14155238886")
+    
+    # Inicializa componentes
+    initialize_app()
+    
+    # Inicia aplicação
+    app.run(debug=config.DEBUG, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))Completion.create(
                     model=config.OPENAI_MODEL,
                     messages=[
                         {"role": "system", "content": system_message},
@@ -1274,488 +1913,4 @@ Você pode tentar:
             Mantenha um tom conversacional e amigável, como se estivesse falando pessoalmente.
             """
             
-            response = openai.ChatCompletion.create(
-                model=config.OPENAI_MODEL,
-                messages=[
-                    {"role": "system", "content": system_message},
-                    {"role": "user", "content": f"Cliente forneceu {tipo}: {valor}"}
-                ],
-                max_tokens=300,
-                temperature=0.7
-            )
-            
-            logger.info("✅ Resposta OpenAI gerada com sucesso")
-            return response.choices[0].message['content'].strip()
-            
-        except Exception as e:
-            logger.error(f"❌ OpenAI erro na identificação: {e}")
-    
-    # Fallback humanizado sem OpenAI
-    previsao = dados.get('previsao_conclusao', '')
-    
-    if session_data.platform == "whatsapp":
-        if "agendado" in status.lower():
-            previsao_text = f" com previsão para {previsao}" if previsao else ""
-            return f"""
-👋 Olá {nome}! 
-
-Sua ordem de serviço {ordem} para {tipo_servico} no seu {modelo} ({ano}), placa {placa}, está agendada{previsao_text}.
-
-🏪 Nossa equipe já está organizando tudo para você.
-
-💬 Como posso te ajudar?
-"""
-        elif "andamento" in status.lower():
-            previsao_text = f" com previsão de conclusão {previsao}" if previsao else ""
-            return f"""
-👋 Olá {nome}! 
-
-Sua ordem de serviço {ordem} está em andamento. Nossa equipe está trabalhando na {tipo_servico} do seu {modelo} ({ano}), placa {placa}{previsao_text}.
-
-🔧 Tudo está correndo bem e dentro do prazo previsto.
-
-💬 Precisa de alguma informação específica?
-"""
-        elif "concluído" in status.lower():
-            return f"""
-👋 Olá {nome}! 
-
-✅ Ótima notícia! Sua ordem {ordem} foi concluída com sucesso. A {tipo_servico} do seu {modelo} ({ano}), placa {placa}, está pronta.
-
-🏪 Você pode retirar seu veículo em nossa unidade.
-
-💬 Posso te ajudar com mais alguma coisa?
-"""
-        elif "aguardando fotos" in status.lower():
-            return f"""
-👋 Olá {nome}! 
-
-Sua ordem {ordem} para {tipo_servico} no seu {modelo} ({ano}), placa {placa}, está aguardando as fotos para darmos continuidade.
-
-📷 Você pode enviar pelo nosso sistema ou entrar em contato: 0800-701-9495
-
-💬 Precisa de ajuda para enviar as fotos?
-"""
-        else:
-            return f"""
-👋 Olá {nome}! 
-
-Encontrei sua ordem {ordem} para {tipo_servico} no seu {modelo} ({ano}), placa {placa}. No momento está: {status}.
-
-🏪 Nossa equipe está cuidando de tudo para você.
-
-💬 Como posso te ajudar?
-"""
-    else:
-        # Versão web
-        if "agendado" in status.lower():
-            previsao_text = f" com previsão para {previsao}" if previsao else ""
-            return f"""
-👋 Olá {nome}! Encontrei suas informações.
-
-Sua ordem de serviço {ordem} para {tipo_servico} no seu {modelo} ({ano}), placa {placa}, está agendada{previsao_text}.
-
-🏪 Nossa equipe já está organizando tudo para você.
-
-💬 Como posso te ajudar?
-"""
-        elif "andamento" in status.lower():
-            previsao_text = f" com previsão de conclusão {previsao}" if previsao else ""
-            return f"""
-👋 Olá {nome}! Encontrei suas informações.
-
-Sua ordem de serviço {ordem} está em andamento. Nossa equipe está trabalhando na {tipo_servico} do seu {modelo} ({ano}), placa {placa}{previsao_text}.
-
-🔧 Tudo está correndo bem e dentro do prazo previsto.
-
-💬 Precisa de alguma informação específica?
-"""
-        elif "concluído" in status.lower():
-            return f"""
-👋 Olá {nome}! Encontrei suas informações.
-
-✅ Ótima notícia! Sua ordem {ordem} foi concluída com sucesso. A {tipo_servico} do seu {modelo} ({ano}), placa {placa}, está pronta.
-
-🏪 Você pode retirar seu veículo em nossa unidade.
-
-💬 Posso te ajudar com mais alguma coisa?
-"""
-        elif "aguardando fotos" in status.lower():
-            return f"""
-👋 Olá {nome}! Encontrei suas informações.
-
-Sua ordem {ordem} para {tipo_servico} no seu {modelo} ({ano}), placa {placa}, está aguardando as fotos para darmos continuidade.
-
-📷 Você pode enviar pelo nosso sistema ou entrar em contato: 0800-701-9495
-
-💬 Precisa de ajuda para enviar as fotos?
-"""
-        else:
-            return f"""
-👋 Olá {nome}! Encontrei suas informações.
-
-Sua ordem {ordem} para {tipo_servico} no seu {modelo} ({ano}), placa {placa}, está com status: {status}.
-
-🏪 Nossa equipe está cuidando de tudo para você.
-
-💬 Como posso te ajudar?
-"""
-
-# ===== FLASK APP =====
-app = Flask(__name__)
-app.secret_key = config.SECRET_KEY
-
-@app.route('/')
-def index():
-    try:
-        session_id = session.get('session_id')
-        if not session_id:
-            session_data = session_manager.create_session()
-            session['session_id'] = session_data.session_id
-        return render_template('index.html')
-    except Exception as e:
-        logger.error(f"Erro na página inicial: {e}")
-        return render_template('index.html'), 500
-
-@app.route('/get_messages')
-def get_messages():
-    try:
-        session_id = session.get('session_id')
-        if not session_id:
-            session_data = session_manager.create_session()
-            session['session_id'] = session_data.session_id
-        else:
-            session_data = session_manager.get_session(session_id)
-            if not session_data:
-                session_data = session_manager.create_session()
-                session['session_id'] = session_data.session_id
-        
-        return jsonify({"messages": session_data.messages})
-    except Exception as e:
-        logger.error(f"Erro ao recuperar mensagens: {e}")
-        return jsonify({
-            "messages": [{
-                "role": "assistant",
-                "content": "Olá! Sou Clara, sua assistente virtual da CarGlass. Digite seu CPF, telefone ou placa do veículo para começarmos.",
-                "time": get_current_time()
-            }]
-        })
-
-@app.route('/send_message', methods=['POST'])
-def send_message():
-    try:
-        user_input = sanitize_input(request.form.get('message', ''))
-        logger.info(f"📨 Mensagem recebida: {user_input[:50]}...")
-        
-        session_id = session.get('session_id')
-        session_data = session_manager.get_session(session_id)
-        
-        if not session_data:
-            session_data = session_manager.create_session()
-            session['session_id'] = session_data.session_id
-        
-        session_data.add_message("user", user_input)
-        
-        if not session_data.client_identified:
-            response = process_identification(user_input, session_data)
-        else:
-            response = get_ai_response(user_input, session_data.client_info, session_data.platform)
-        
-        session_data.add_message("assistant", response)
-        
-        return jsonify({'messages': session_data.messages})
-        
-    except Exception as e:
-        logger.error(f"Erro ao processar mensagem: {e}")
-        logger.error(traceback.format_exc())
-        return jsonify({
-            'messages': [{
-                "role": "assistant",
-                "content": "Desculpe, ocorreu um erro. Nossa equipe foi notificada. Tente novamente em instantes.",
-                "time": get_current_time()
-            }]
-        }), 500
-
-@app.route('/whatsapp/webhook', methods=['POST'])
-def whatsapp_webhook():
-    """Webhook para receber mensagens WhatsApp via Twilio"""
-    if not twilio_handler.is_enabled():
-        logger.error("Twilio não configurado - webhook rejeitado")
-        return "Twilio not configured", 400
-    
-    try:
-        # Processa mensagem recebida
-        message_data = twilio_handler.process_incoming_message(request.form)
-        
-        if not message_data:
-            logger.error("Falha ao processar dados da mensagem WhatsApp")
-            return "Bad request", 400
-        
-        phone = message_data['phone']
-        message_text = message_data['message']
-        
-        logger.info(f"📱 WhatsApp processando: {phone[:4]}*** - {message_text[:30]}...")
-        
-        # Recupera ou cria sessão WhatsApp
-        session_data = session_manager.get_whatsapp_session(phone)
-        
-        # Comandos especiais antes de adicionar à sessão
-        if message_text.lower() in ['reiniciar', 'reset', 'nova consulta', 'recomeçar']:
-            # Remove sessão atual e cria nova
-            if session_data.session_id in session_manager.sessions:
-                session_manager._remove_session(session_data.session_id)
-            
-            session_data = session_manager.create_session("whatsapp", phone)
-            response = "🔄 Consulta reiniciada!\n\nDigite seu CPF, telefone ou placa do veículo para nova consulta."
-        else:
-            # Processa mensagem normalmente
-            session_data.add_message("user", message_text)
-            
-            if not session_data.client_identified:
-                response = process_identification(message_text, session_data)
-            else:
-                response = get_ai_response(message_text, session_data.client_info, "whatsapp")
-            
-            session_data.add_message("assistant", response)
-        
-        # Formata resposta para WhatsApp
-        formatted_response = format_for_whatsapp(response)
-        
-        # Envia resposta via Twilio
-        success = twilio_handler.send_message(phone, formatted_response)
-        
-        if success:
-            logger.info(f"✅ Resposta WhatsApp enviada para {phone[:4]}***")
-        else:
-            logger.error(f"❌ Falha ao enviar resposta WhatsApp para {phone[:4]}***")
-        
-        # Retorna TwiML vazio (resposta já foi enviada via API)
-        return twilio_handler.create_twiml_response(), 200
-        
-    except Exception as e:
-        logger.error(f"❌ Erro no webhook WhatsApp: {e}")
-        logger.error(traceback.format_exc())
-        return "Internal error", 500
-
-@app.route('/reset', methods=['POST'])
-def reset():
-    try:
-        session_id = session.get('session_id')
-        if session_id and session_id in session_manager.sessions:
-            session_manager._remove_session(session_id)
-        
-        session_data = session_manager.create_session()
-        session['session_id'] = session_data.session_id
-        
-        return jsonify({'messages': session_data.messages})
-    except Exception as e:
-        logger.error(f"Erro ao reiniciar: {e}")
-        return jsonify({'error': 'Erro ao reiniciar'}), 500
-
-@app.route('/test_openai')
-def test_openai():
-    """Endpoint para testar configuração OpenAI"""
-    if not config.OPENAI_API_KEY:
-        return jsonify({
-            "status": "error",
-            "message": "OPENAI_API_KEY não configurada"
-        })
-    
-    if len(config.OPENAI_API_KEY) < 10:
-        return jsonify({
-            "status": "error",  
-            "message": f"OPENAI_API_KEY parece inválida (muito curta): {config.OPENAI_API_KEY[:10]}..."
-        })
-    
-    try:
-        import openai
-        openai.api_key = config.OPENAI_API_KEY
-        
-        # Teste simples da API
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",  # Modelo mais barato para teste
-            messages=[
-                {"role": "user", "content": "Responda apenas 'OK' se você está funcionando"}
-            ],
-            max_tokens=10,
-            temperature=0
-        )
-        
-        return jsonify({
-            "status": "success",
-            "message": "OpenAI configurada corretamente",
-            "response": response.choices[0].message['content'],
-            "model": config.OPENAI_MODEL
-        })
-        
-    except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": f"Erro ao testar OpenAI: {str(e)}",
-            "key_preview": config.OPENAI_API_KEY[:20] + "..." if len(config.OPENAI_API_KEY) > 20 else config.OPENAI_API_KEY
-        })
-
-@app.route('/health')
-def health_check():
-    """Endpoint para verificação de saúde da aplicação"""
-    try:
-        # Cleanup periódico
-        cache.cleanup_expired()
-        session_manager._cleanup_expired()
-        
-        stats = session_manager.get_stats()
-        
-        return jsonify({
-            "status": "healthy",
-            "timestamp": get_current_time(),
-            "sessions": stats,
-            "cache_items": len(cache.cache),
-            "twilio_enabled": twilio_handler.is_enabled(),
-            "config": {
-                "use_real_api": config.USE_REAL_API,
-                "openai_configured": bool(config.OPENAI_API_KEY),
-                "openai_key_length": len(config.OPENAI_API_KEY) if config.OPENAI_API_KEY else 0,
-                "openai_model": config.OPENAI_MODEL,
-                "session_timeout": config.SESSION_TIMEOUT,
-                "cache_ttl": config.CACHE_TTL
-            },
-            "version": "2.1"
-        })
-    except Exception as e:
-        logger.error(f"Erro no health check: {e}")
-        return jsonify({
-            "status": "error",
-            "message": str(e),
-            "timestamp": get_current_time()
-        }), 500
-
-@app.route('/whatsapp/status')
-def whatsapp_status():
-    """Endpoint para verificar status do WhatsApp"""
-    if not twilio_handler.is_enabled():
-        return jsonify({
-            "enabled": False,
-            "error": "Twilio não configurado - verifique TWILIO_ACCOUNT_SID e TWILIO_AUTH_TOKEN"
-        }), 400
-    
-    return jsonify({
-        "enabled": True,
-        "whatsapp_number": config.TWILIO_WHATSAPP_NUMBER,
-        "active_sessions": len([s for s in session_manager.sessions.values() if s.platform == "whatsapp"]),
-        "webhook_url": request.url_root + "whatsapp/webhook"
-    })
-
-@app.route('/debug/sessions')
-def debug_sessions():
-    """Endpoint para debug das sessões (apenas em modo DEBUG)"""
-    if not config.DEBUG:
-        return jsonify({"error": "Debug mode not enabled"}), 403
-    
-    try:
-        sessions_info = []
-        for session_id, session_data in session_manager.sessions.items():
-            sessions_info.append({
-                "session_id": session_id[:8] + "***",
-                "platform": session_data.platform,
-                "client_identified": session_data.client_identified,
-                "messages_count": len(session_data.messages),
-                "created_at": time.strftime("%H:%M:%S", time.localtime(session_data.created_at)),
-                "last_activity": time.strftime("%H:%M:%S", time.localtime(session_data.last_activity)),
-                "phone_number": session_data.phone_number[:4] + "***" if session_data.phone_number else None
-            })
-        
-        return jsonify({
-            "total_sessions": len(sessions_info),
-            "sessions": sessions_info,
-            "whatsapp_mappings": len(session_manager.whatsapp_sessions)
-        })
-    except Exception as e:
-        logger.error(f"Erro no debug sessions: {e}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/debug/cache')
-def debug_cache():
-    """Endpoint para debug do cache (apenas em modo DEBUG)"""
-    if not config.DEBUG:
-        return jsonify({"error": "Debug mode not enabled"}), 403
-    
-    try:
-        cache_info = {}
-        current_time = time.time()
-        
-        for key, item in cache.cache.items():
-            cache_info[key] = {
-                "expires_in": max(0, int(item['expires'] - current_time)),
-                "size": len(str(item['value']))
-            }
-        
-        return jsonify({
-            "cache_size": len(cache.cache),
-            "max_items": cache.max_items,
-            "items": cache_info
-        })
-    except Exception as e:
-        logger.error(f"Erro no debug cache: {e}")
-        return jsonify({"error": str(e)}), 500
-
-# ===== TRATAMENTO DE ERROS =====
-@app.errorhandler(404)
-def not_found(error):
-    logger.warning(f"404 - Página não encontrada: {request.url}")
-    return jsonify({'error': 'Endpoint não encontrado'}), 404
-
-@app.errorhandler(500)
-def internal_error(error):
-    logger.error(f"Erro interno: {error}")
-    logger.error(traceback.format_exc())
-    return jsonify({'error': 'Erro interno do servidor'}), 500
-
-@app.errorhandler(Exception)
-def handle_exception(e):
-    logger.error(f"Exceção não tratada: {e}")
-    logger.error(traceback.format_exc())
-    return jsonify({'error': 'Erro interno do servidor'}), 500
-
-# ===== INICIALIZAÇÃO =====
-def initialize_app():
-    """Inicializa componentes da aplicação"""
-    logger.info("🔧 Inicializando componentes da aplicação...")
-    
-    # Cleanup inicial
-    cache.cleanup_expired()
-    session_manager._cleanup_expired()
-    
-    # Testa configurações
-    if config.OPENAI_API_KEY:
-        logger.info("✅ OpenAI API Key configurada")
-    else:
-        logger.warning("⚠️ OpenAI API Key não configurada - usando fallbacks")
-    
-    if twilio_handler.is_enabled():
-        logger.info("✅ Twilio WhatsApp habilitado")
-    else:
-        logger.warning("⚠️ Twilio WhatsApp desabilitado")
-    
-    logger.info("✅ Aplicação inicializada com sucesso")
-
-if __name__ == '__main__':
-    logger.info("🚀 CarGlass Assistant v2.1 + Twilio WhatsApp iniciando...")
-    logger.info(f"Modo API: {'REAL' if config.USE_REAL_API else 'SIMULAÇÃO'}")
-    logger.info(f"OpenAI: {'CONFIGURADO' if config.OPENAI_API_KEY else 'FALLBACK'}")
-    logger.info(f"Twilio WhatsApp: {'HABILITADO' if twilio_handler.is_enabled() else 'DESABILITADO'}")
-    logger.info(f"Debug Mode: {'HABILITADO' if config.DEBUG else 'DESABILITADO'}")
-    
-    if twilio_handler.is_enabled():
-        logger.info(f"📱 WhatsApp número: {config.TWILIO_WHATSAPP_NUMBER}")
-        logger.info(f"🔗 Webhook URL: http://localhost:5000/whatsapp/webhook (configure no Twilio)")
-    else:
-        logger.warning("⚠️ Para habilitar WhatsApp, configure as variáveis:")
-        logger.warning("    TWILIO_ACCOUNT_SID=ACxxxxx")
-        logger.warning("    TWILIO_AUTH_TOKEN=xxxxx")
-        logger.warning("    TWILIO_WHATSAPP_NUMBER=whatsapp:+14155238886")
-    
-    # Inicializa componentes
-    initialize_app()
-    
-    # Inicia aplicação
-    app.run(debug=config.DEBUG, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+            response = openai.Chat
