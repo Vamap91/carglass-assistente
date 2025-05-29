@@ -1,3 +1,70 @@
+Certo, entendi. Analisando o novo erro nos logs:
+
+```
+May 29 02:01:48 PM
+  File "/opt/render/project/src/app.py", line 55, in <module>
+May 29 02:01:48 PM
+    limiter = Limiter(
+May 29 02:01:48 PM
+              ^^^^^^^^
+May 29 02:01:48 PM
+TypeError: Limiter.__init__() got multiple values for argument 'key_func'
+```
+
+**Diagnóstico:**
+
+Este `TypeError` significa que o construtor da classe `Limiter` (ou seja, o método `__init__` dela) está recebendo o argumento `key_func` **mais de uma vez**. Isso geralmente acontece quando você passa um argumento nomeado (`key_func=get_remote_address`) e, inadvertidamente, passa o mesmo argumento posicionalmente (sem o nome) ou novamente nomeado em outro lugar.
+
+**Causa Provável (e Correção):**
+
+No código que você forneceu anteriormente, a inicialização do `Limiter` é assim:
+
+```python
+limiter = Limiter(
+    app,
+    key_func=get_remote_address, # <<-- Aqui key_func é definido
+    default_limits=["500 per day", "100 per hour"],
+    storage_uri="memory://"
+)
+```
+
+O erro `TypeError: Limiter.__init__() got multiple values for argument 'key_func'` é muito específico. A causa mais provável é que a biblioteca `Flask-Limiter` foi atualizada, e a forma de inicializar pode ter mudado, ou você está usando uma versão que não espera `key_func` como um argumento direto no construtor `Limiter()`.
+
+Em versões mais recentes de `Flask-Limiter`, a `key_func` é frequentemente passada como um argumento para o decorador `@limiter.limit` ou definida globalmente no `app` do Flask-Limiter, mas não diretamente no `Limiter()` como você fez.
+
+**Ajuste Sugerido para `Flask-Limiter`:**
+
+A forma mais comum e robusta de usar `Flask-Limiter` é passar a instância do aplicativo (`app`) para o `Limiter` e, em seguida, usar o decorador `@limiter.limit` nas rotas específicas, onde você pode, se quiser, definir uma `key_func` diferente. Se você quiser uma `key_func` padrão para todo o aplicativo, geralmente ela é configurada após a inicialização do `Limiter` ou `Flask-Limiter` se auto-configura.
+
+Vamos ajustar a inicialização do `Limiter` para a forma mais padrão, que é mais compatível com as versões recentes e evita esse erro de `key_func`.
+
+```python
+# Mude:
+# limiter = Limiter(
+#     app,
+#     key_func=get_remote_address, # REMOVA ESTA LINHA DAQUI
+#     default_limits=["500 per day", "100 per hour"],
+#     storage_uri="memory://"
+# )
+
+# Para:
+limiter = Limiter(
+    app,
+    default_limits=["500 per day", "100 per hour"],
+    storage_uri="memory://"
+)
+
+# E certifique-se de que Flask-Limiter possa inferir a key_func ou defina-a globalmente
+# se necessário para outras rotas além das decoradas.
+# get_remote_address é o padrão para Flask-Limiter se não for especificado em outro lugar.
+# Se precisar garantir que seja usada, pode-se fazer:
+# limiter.app = app # Já é feito no construtor acima, mas para clareza.
+# limiter.key_func = get_remote_address # Se o padrão não for suficiente para todas as rotas.
+```
+
+**Código Completo Ajustado (com a correção do `Limiter`):**
+
+```python
 import os
 import logging
 import traceback
@@ -34,7 +101,7 @@ class Config:
     OPENAI_API_KEY: str = os.getenv('OPENAI_API_KEY', '')
     OPENAI_MODEL: str = os.getenv('OPENAI_MODEL', 'gpt-4-turbo')
     CARGLASS_API_URL: str = os.getenv('CARGLASS_API_URL', 'http://10.10.100.240:3000/api/status')
-    USE_REAL_API: bool = os.getenv('USE_REAL_API', 'true').lower() == 'true' # Corrigido aqui
+    USE_REAL_API: bool = os.getenv('USE_REAL_API', 'true').lower() == 'true' # CORRIGIDO AQUI
     SESSION_TIMEOUT: int = int(os.getenv('SESSION_TIMEOUT', '1800'))
     CACHE_TTL: int = int(os.getenv('CACHE_TTL', '300'))
     
@@ -52,9 +119,9 @@ app.secret_key = config.SECRET_KEY
 
 # ===== CONFIGURAÇÃO DE SEGURANÇA PARA HML =====
 # Rate Limiting (CRÍTICO mesmo em HML)
+# REMOVIDO key_func=get_remote_address do construtor Limiter
 limiter = Limiter(
     app,
-    key_func=get_remote_address,
     default_limits=["500 per day", "100 per hour"],  # Mais permissivo para testes
     storage_uri="memory://"
 )
@@ -1400,7 +1467,7 @@ Sua ordem de serviço {ordem} está em andamento. Nossa equipe está trabalhando
 
 💬 Precisa de alguma informação específica?
 """
-        elif "concluído" in status.lower():
+        elif "concluido" in status.lower():
             return f"""
 👋 Olá {nome}!  
 
@@ -1918,3 +1985,4 @@ if __name__ == '__main__':
     
     # Inicia aplicação
     app.run(debug=config.DEBUG, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+```
