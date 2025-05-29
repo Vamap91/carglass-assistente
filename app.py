@@ -12,7 +12,7 @@ import json
 from collections import defaultdict
 import hashlib
 
-from flask import Flask, render_template, request, jsonify, session, abort # Importe 'abort' aqui
+from flask import Flask, render_template, request, jsonify, session, abort
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from twilio.request_validator import RequestValidator
@@ -34,10 +34,10 @@ class Config:
     OPENAI_API_KEY: str = os.getenv('OPENAI_API_KEY', '')
     OPENAI_MODEL: str = os.getenv('OPENAI_MODEL', 'gpt-4-turbo')
     CARGLASS_API_URL: str = os.getenv('CARGLASS_API_URL', 'http://10.10.100.240:3000/api/status')
-    USE_REAL_API: bool = os.getenv('USE_REAL_API', 'true').lower() == 'true' # CORRIGIDO AQUI
+    USE_REAL_API: bool = os.getenv('USE_REAL_API', 'true').lower() == 'true'
     SESSION_TIMEOUT: int = int(os.getenv('SESSION_TIMEOUT', '1800'))
     CACHE_TTL: int = int(os.getenv('CACHE_TTL', '300'))
-    
+
     # Configurações Twilio
     TWILIO_ACCOUNT_SID: str = os.getenv('TWILIO_ACCOUNT_SID', '')
     TWILIO_AUTH_TOKEN: str = os.getenv('TWILIO_AUTH_TOKEN', '')
@@ -52,7 +52,7 @@ app.secret_key = config.SECRET_KEY
 
 # ===== CONFIGURAÇÃO DE SEGURANÇA PARA HML =====
 # Rate Limiting (CRÍTICO mesmo em HML)
-# REMOVIDO key_func=get_remote_address do construtor Limiter
+# REMOVIDO key_func=get_remote_address do construtor Limiter conforme correção anterior
 limiter = Limiter(
     app,
     default_limits=["500 per day", "100 per hour"],  # Mais permissivo para testes
@@ -66,7 +66,7 @@ class TwilioWhatsAppHandler:
         self.auth_token = config.TWILIO_AUTH_TOKEN
         self.whatsapp_number = config.TWILIO_WHATSAPP_NUMBER
         self.client = None
-        
+
         if self.account_sid and self.auth_token:
             try:
                 from twilio.rest import Client
@@ -80,26 +80,26 @@ class TwilioWhatsAppHandler:
                 logger.error(f"❌ Erro ao inicializar Twilio: {e}")
         else:
             logger.warning("⚠️ Credenciais Twilio não configuradas - WhatsApp desabilitado")
-    
+
     def is_enabled(self) -> bool:
         """Verifica se o Twilio está configurado e habilitado"""
         return self.client is not None
-    
+
     def send_message(self, to_number: str, message: str) -> bool:
         """
         Envia mensagem WhatsApp via Twilio
-        
+
         Args:
             to_number: Número do destinatário (formato: +5511987654321 ou 5511987654321)
             message: Texto da mensagem
-            
+
         Returns:
             bool: True se enviou com sucesso, False caso contrário
         """
         if not self.is_enabled():
             logger.error("Twilio não está habilitado")
             return False
-        
+
         try:
             # Formata número para WhatsApp
             clean_number = re.sub(r'[^\d+]', '', to_number)
@@ -108,34 +108,34 @@ class TwilioWhatsAppHandler:
                     clean_number = '+' + clean_number
                 else:
                     clean_number = '+55' + clean_number
-            
+
             whatsapp_to = f"whatsapp:{clean_number}"
-            
+
             # Limita tamanho da mensagem (Twilio limit: 1600 chars)
             if len(message) > 1500:
                 message = message[:1500] + "...\n\n📱 Continue no link:\nhttps://carglass-assistente.onrender.com"
-            
+
             # Envia mensagem
             message_instance = self.client.messages.create(
                 body=message,
                 from_=self.whatsapp_number,
                 to=whatsapp_to
             )
-            
+
             logger.info(f"✅ Mensagem Twilio enviada: {message_instance.sid} para {whatsapp_to}")
             return True
-            
+
         except Exception as e:
             logger.error(f"❌ Erro ao enviar mensagem Twilio: {e}")
             return False
-    
+
     def process_incoming_message(self, request_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
         Processa mensagem recebida do webhook Twilio
-        
+
         Args:
             request_data: Dados do webhook Twilio (request.form ou dict)
-            
+
         Returns:
             dict: Dados processados da mensagem ou None se erro
         """
@@ -144,13 +144,13 @@ class TwilioWhatsAppHandler:
             from_number = request_data.get('From', '').replace('whatsapp:', '').replace('+', '')
             message_body = request_data.get('Body', '').strip()
             message_sid = request_data.get('MessageSid', '')
-            
+
             # Limpa número (remove código do país se necessário)
             if from_number.startswith('55') and len(from_number) > 11:
                 from_number = from_number[2:]  # Remove +55
-            
+
             logger.info(f"📱 WhatsApp recebido de {from_number[:4]}***: {message_body[:50]}...")
-            
+
             return {
                 'phone': from_number,
                 'message': message_body,
@@ -158,24 +158,24 @@ class TwilioWhatsAppHandler:
                 'platform': 'whatsapp',
                 'raw_data': dict(request_data)
             }
-            
+
         except Exception as e:
             logger.error(f"❌ Erro ao processar mensagem WhatsApp: {e}")
             return None
-    
+
     def create_twiml_response(self, message: str = None) -> str:
         """
         Cria resposta TwiML (opcional - para resposta imediata)
-        
+
         Args:
             message: Mensagem de resposta (opcional)
-            
+
         Returns:
             str: XML TwiML
         """
         if not self.is_enabled():
             return ""
-        
+
         try:
             response = self.MessagingResponse()
             if message:
@@ -193,57 +193,57 @@ class HMLSecurityManager:
     def __init__(self):
         self.request_counts = defaultdict(list)
         self.blocked_ips = set()
-        
+
     def sanitize_input(self, text: str) -> str:
         """Sanitização básica - mais permissiva em HML"""
         if not text:
             return ""
-        
+
         # Remove apenas scripts perigosos
         text = bleach.clean(text, tags=[], strip=True)
         text = escape(text)
-        
+
         # Limita tamanho (mais generoso em HML)
         return text[:2000].strip()
-    
+
     def log_request(self, ip: str, endpoint: str):
         """Log simples para monitoramento"""
         now = time.time()
-        
+
         # Remove requests antigos (última hora)
         cutoff = now - 3600
         self.request_counts[ip] = [
-            (ep, t) for ep, t in self.request_counts[ip] 
+            (ep, t) for ep, t in self.request_counts[ip]
             if t > cutoff
         ]
-        
+
         # Adiciona novo request
         self.request_counts[ip].append((endpoint, now))
-        
+
         # Bloqueia apenas abuso extremo (mais de 200 requests/hora)
         if len(self.request_counts[ip]) > 200:
             self.blocked_ips.add(ip)
             logger.warning(f"🚨 IP bloqueado por abuso em HML: {ip}")
-    
+
     def is_ip_blocked(self, ip: str) -> bool:
         return ip in self.blocked_ips
-    
+
     def validate_twilio_webhook(self, request) -> bool:
         """CRÍTICO: Valida webhook mesmo em HML"""
         if not config.TWILIO_AUTH_TOKEN:
             logger.warning("⚠️ TWILIO_AUTH_TOKEN não configurado")
             return True  # Permite em desenvolvimento local (CUIDADO: APENAS PARA DEV/TESTE)
-        
+
         try:
             validator = RequestValidator(config.TWILIO_AUTH_TOKEN)
             signature = request.headers.get('X-Twilio-Signature', '')
             url = request.url
-            
+
             if request.method == 'POST':
                 return validator.validate(url, request.form, signature)
             else:
                 return validator.validate(url, request.args, signature)
-                
+
         except Exception as e:
             logger.error(f"Erro na validação Twilio: {e}")
             return False
@@ -267,11 +267,11 @@ def validate_cpf(cpf: str) -> bool:
     if not cpf or len(cpf) != 11:
         logger.info(f"CPF inválido - tamanho: {len(cpf) if cpf else 0}")
         return False
-    
+
     # CPFs de teste sempre válidos - EXPANSÃO DA LISTA
     test_cpfs = [
         "12345678900",  # Principal para testes
-        "11938012431",  
+        "11938012431",
         "98765432100",
         "11122233344",
         "33344455566",
@@ -280,30 +280,30 @@ def validate_cpf(cpf: str) -> bool:
         "77788899900",
         "22233344455"
     ]
-    
+
     if cpf in test_cpfs:
         logger.info(f"CPF de teste válido: {cpf[:3]}***")
         return True
-    
+
     # Verifica se todos os dígitos são iguais
     if cpf == cpf[0] * 11:
         logger.info(f"CPF inválido - dígitos iguais: {cpf}")
         return False
-    
+
     # Validação matemática normal
     try:
         soma = sum(int(cpf[i]) * (10 - i) for i in range(9))
         resto = soma % 11
         digito1 = 0 if resto < 2 else 11 - resto
-        
+
         if int(cpf[9]) != digito1:
             logger.info(f"CPF inválido - primeiro dígito: {cpf}")
             return False
-        
+
         soma = sum(int(cpf[i]) * (11 - i) for i in range(10))
         resto = soma % 11
         digito2 = 0 if resto < 2 else 11 - resto
-        
+
         is_valid = int(cpf[10]) == digito2
         logger.info(f"CPF {'válido' if is_valid else 'inválido'}: {cpf[:3]}***")
         return is_valid
@@ -315,10 +315,10 @@ def detect_identifier_type(text: str) -> Tuple[Optional[str], str]:
     """Detecta tipo de identificador - CORRIGIDO"""
     if not text:
         return None, ""
-    
+
     clean_text = re.sub(r'[^a-zA-Z0-9]', '', text.strip())
     logger.info(f"🔍 Detectando tipo para: '{clean_text}' (original: '{text}')")
-    
+
     # Verifica CPF primeiro (11 dígitos)
     if re.match(r'^\d{11}$', clean_text):
         logger.info(f"Possível CPF detectado: {clean_text}")
@@ -328,66 +328,66 @@ def detect_identifier_type(text: str) -> Tuple[Optional[str], str]:
         else:
             logger.info(f"❌ CPF inválido: {clean_text}")
             return None, clean_text
-    
+
     # Verifica telefone (10 ou 11 dígitos)
     elif re.match(r'^\d{10,11}$', clean_text):
         logger.info(f"Telefone detectado: {clean_text[:4]}***")
         return "telefone", clean_text
-    
+
     # Verifica placa
     elif re.match(r'^[A-Za-z]{3}\d{4}$', clean_text) or re.match(r'^[A-Za-z]{3}\d[A-Za-z]\d{2}$', clean_text):
         logger.info(f"Placa detectada: {clean_text}")
         return "placa", clean_text.upper()
-    
+
     # Verifica ordem de serviço
     elif re.match(r'^\d{1,8}$', clean_text):
         logger.info(f"Ordem detectada: {clean_text}")
         return "ordem", clean_text
-    
+
     logger.info(f"❌ Nenhum tipo identificado para: {clean_text}")
     return None, clean_text
 
 def format_for_whatsapp(html_content: str) -> str:
     """
     Converte resposta HTML para formato WhatsApp
-    
+
     Args:
         html_content: Conteúdo com HTML tags
-        
+
     Returns:
         str: Texto formatado para WhatsApp
     """
     text = html_content
-    
+
     # Converte HTML para markdown WhatsApp
     text = re.sub(r'<strong>(.*?)</strong>', r'*\1*', text)  # Bold
     text = re.sub(r'<b>(.*?)</b>', r'*\1*', text)  # Bold
     text = re.sub(r'<em>(.*?)</em>', r'_\1_', text)  # Italic
     text = re.sub(r'<i>(.*?)</i>', r'_\1_', text)  # Italic
-    
+
     # Remove componentes específicos do HTML
     text = re.sub(r'<div class="status-progress-container">.*?</div>', '', text, flags=re.DOTALL)
     text = re.sub(r'<div class="timeline-.*?</div>', '', text, flags=re.DOTALL)
     text = re.sub(r'<span class="status-tag.*?</span>', lambda m: re.sub(r'<.*?>', '', m.group()), text)
-    
+
     # Remove outras tags HTML
     text = re.sub(r'<[^>]+>', '', text)
-    
+
     # Converte entidades HTML
     text = text.replace('&amp;', '&')
     text = text.replace('&lt;', '<')
     text = text.replace('&gt;', '>')
     text = text.replace('&nbsp;', ' ')
-    
+
     # Limita tamanho (WhatsApp limit: 4096 chars, mas Twilio é menor)
     if len(text) > 1400:
         text = text[:1400] + "...\n\n📱 Para mais detalhes:\nhttps://carglass-assistente.onrender.com"
-    
+
     # Remove espaços extras e quebras de linha excessivas
     text = re.sub(r'\n{3,}', '\n\n', text)
     text = re.sub(r' {2,}', ' ', text)
     text = text.strip()
-    
+
     return text
 
 # ===== CACHE EM MEMÓRIA =====
@@ -395,7 +395,7 @@ class MemoryCache:
     def __init__(self):
         self.cache = {}
         self.max_items = 1000
-    
+
     def get(self, key: str) -> Any:
         item = self.cache.get(key)
         if item and item['expires'] > time.time():
@@ -403,23 +403,23 @@ class MemoryCache:
         elif item:
             del self.cache[key]
         return None
-    
+
     def set(self, key: str, value: Any, ttl: int = 300):
         if len(self.cache) >= self.max_items:
             # Remove 20% dos itens mais antigos
             old_keys = list(self.cache.keys())[:int(self.max_items * 0.2)]
             for old_key in old_keys:
                 del self.cache[old_key]
-        
+
         self.cache[key] = {
             'value': value,
             'expires': time.time() + ttl
         }
-    
+
     def delete(self, key: str):
         if key in self.cache:
             del self.cache[key]
-    
+
     def cleanup_expired(self):
         """Remove itens expirados do cache"""
         current_time = time.time()
@@ -442,13 +442,13 @@ class SessionData:
     messages: List[Dict[str, Any]]
     platform: str = "web"  # "web" ou "whatsapp"
     phone_number: Optional[str] = None  # Para sessões WhatsApp
-    
+
     def is_expired(self) -> bool:
         return (time.time() - self.last_activity) > config.SESSION_TIMEOUT
-    
+
     def update_activity(self):
         self.last_activity = time.time()
-    
+
     def add_message(self, role: str, content: str):
         message = {
             "role": role,
@@ -458,7 +458,7 @@ class SessionData:
         }
         self.messages.append(message)
         self.update_activity()
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Converte SessionData para dicionário"""
         return {
@@ -476,11 +476,11 @@ class SessionManager:
     def __init__(self):
         self.sessions = {}
         self.whatsapp_sessions = {}  # phone_number -> session_id
-    
+
     def create_session(self, platform: str = "web", phone_number: str = None) -> SessionData:
         session_id = str(uuid.uuid4())
         current_time = time.time()
-        
+
         session_data = SessionData(
             session_id=session_id,
             created_at=current_time,
@@ -491,29 +491,29 @@ class SessionManager:
             platform=platform,
             phone_number=phone_number
         )
-        
+
         # Mensagem de boas-vindas personalizada por plataforma
         if platform == "whatsapp":
             welcome_msg = "👋 Olá! Sou Clara, assistente virtual da CarGlass.\n\nDigite seu CPF, telefone ou placa do veículo para consultar seu atendimento."
         else:
             welcome_msg = "Olá! Sou Clara, sua assistente virtual da CarGlass. Digite seu CPF, telefone ou placa do veículo para começarmos."
-        
+
         session_data.add_message("assistant", welcome_msg)
-        
+
         self.sessions[session_id] = session_data
-        
+
         # Para WhatsApp, mapeia telefone -> session_id
         if platform == "whatsapp" and phone_number:
             self.whatsapp_sessions[phone_number] = session_id
-        
+
         self._cleanup_expired()
         logger.info(f"Sessão criada: {session_id[:8]}*** - Plataforma: {platform}")
         return session_data
-    
+
     def get_session(self, session_id: str) -> Optional[SessionData]:
         if not session_id:
             return None
-        
+
         session_data = self.sessions.get(session_id)
         if session_data and not session_data.is_expired():
             session_data.update_activity()
@@ -521,14 +521,14 @@ class SessionManager:
         elif session_data:
             logger.info(f"Sessão expirada removida: {session_id[:8]}***")
             self._remove_session(session_id)
-        
+
         return None
-    
+
     def get_whatsapp_session(self, phone_number: str) -> Optional[SessionData]:
         """Recupera ou cria sessão WhatsApp baseada no telefone"""
         if not phone_number:
             return None
-        
+
         session_id = self.whatsapp_sessions.get(phone_number)
         if session_id:
             session_data = self.get_session(session_id)
@@ -538,10 +538,10 @@ class SessionManager:
                 # Session expirou, remove mapeamento
                 del self.whatsapp_sessions[phone_number]
                 logger.info(f"Mapeamento WhatsApp removido: {phone_number[:4]}***")
-        
+
         # Cria nova sessão WhatsApp
         return self.create_session("whatsapp", phone_number)
-    
+
     def _remove_session(self, session_id: str):
         """Remove sessão e limpeza dos mapeamentos"""
         if session_id in self.sessions:
@@ -550,23 +550,23 @@ class SessionManager:
                 del self.whatsapp_sessions[session_data.phone_number]
             del self.sessions[session_id]
             logger.info(f"Sessão removida: {session_id[:8]}***")
-    
+
     def _cleanup_expired(self):
         current_time = time.time()
-        expired = [sid for sid, data in self.sessions.items()  
+        expired = [sid for sid, data in self.sessions.items()
                     if current_time - data.last_activity > config.SESSION_TIMEOUT]
         for sid in expired:
             self._remove_session(sid)
         if expired:
             logger.info(f"Limpeza de sessões: {len(expired)} sessões expiradas removidas")
-    
+
     def get_stats(self) -> Dict[str, Any]:
         """Retorna estatísticas das sessões"""
         total = len(self.sessions)
         web_sessions = len([s for s in self.sessions.values() if s.platform == "web"])
         whatsapp_sessions = len([s for s in self.sessions.values() if s.platform == "whatsapp"])
         identified = len([s for s in self.sessions.values() if s.client_identified])
-        
+
         return {
             "total": total,
             "web": web_sessions,
@@ -584,7 +584,7 @@ def get_client_data(tipo: str, valor: str) -> Dict[str, Any]:
     if cached_result:
         logger.info(f"Cache hit para {tipo}: {valor[:4]}***")
         return cached_result
-    
+
     if config.USE_REAL_API:
         import requests
         try:
@@ -594,19 +594,19 @@ def get_client_data(tipo: str, valor: str) -> Dict[str, Any]:
                 "telefone": "http://fusion-hml.carglass.hml.local:3000/api/status/telefone/",
                 "ordem": "http://fusion-hml.carglass.hml.local:3000/api/status/ordem/"
             }
-            
+
             # Verifica se o tipo é suportado
             if tipo not in api_urls:
                 logger.warning(f"Tipo '{tipo}' não suportado pelas APIs")
                 return {"sucesso": False, "mensagem": f"Tipo '{tipo}' não suportado"}
-            
+
             # Monta URL completa
             endpoint = f"{api_urls[tipo]}{valor}"
             logger.info(f"Consultando API CarGlass: {endpoint}")
-            
+
             # Faz requisição
             response = requests.get(endpoint, timeout=10)
-            
+
             if response.status_code == 200:
                 data = response.json()
                 logger.info(f"API CarGlass - Sucesso: {data.get('sucesso')}")
@@ -614,14 +614,14 @@ def get_client_data(tipo: str, valor: str) -> Dict[str, Any]:
                 return data
             else:
                 logger.error(f"API CarGlass - Status: {response.status_code}")
-                
+
         except requests.exceptions.ConnectionError as e:
             logger.warning(f"API CarGlass indisponível: {e}. Usando fallback.")
         except requests.exceptions.Timeout as e:
             logger.warning(f"API CarGlass timeout: {e}. Usando fallback.")
         except Exception as e:
             logger.error(f"Erro na API CarGlass: {e}")
-    
+
     # Fallback para dados mockados
     logger.info("Usando dados mockados como fallback")
     mock_data = get_mock_data(tipo, valor)
@@ -638,7 +638,7 @@ def get_mock_data(tipo: str, valor: str) -> Dict[str, Any]:
                 "cpf": "12345678900",
                 "telefone": "11987654321",
                 "ordem": "ORD12345",
-                "status": "Em andamento",
+                "status": "Em andamento", # <<< AJUSTE PARA TESTAR FLUXOS
                 "tipo_servico": "Troca de Parabrisa",
                 "veiculo": {"modelo": "Honda Civic", "placa": "ABC1234", "ano": "2022"},
                 "loja": "CarGlass Morumbi",
@@ -696,7 +696,7 @@ def get_mock_data(tipo: str, valor: str) -> Dict[str, Any]:
                 "cpf": "44455566677",
                 "telefone": "11933332222",
                 "ordem": "ORD24680",
-                "status": "Fotos Recebidas",
+                "status": "Fotos Recebidas", # <<< AJUSTE PARA TESTAR FLUXOS
                 "tipo_servico": "Calibração ADAS",
                 "veiculo": {"modelo": "Jeep Compass", "placa": "MNO7890", "ano": "2023"},
                 "loja": "CarGlass Morumbi",
@@ -724,7 +724,7 @@ def get_mock_data(tipo: str, valor: str) -> Dict[str, Any]:
                 "cpf": "77788899900",
                 "telefone": "11933332222",
                 "ordem": "ORD24680",
-                "status": "Peça Identificada",
+                "status": "Peça Identificada", # <<< AJUSTE PARA TESTAR FLUXOS
                 "tipo_servico": "Calibração ADAS",
                 "veiculo": {"modelo": "Jeep Compass", "placa": "MNO7890", "ano": "2023"},
                 "loja": "CarGlass Santo André",
@@ -746,10 +746,10 @@ def get_mock_data(tipo: str, valor: str) -> Dict[str, Any]:
             }
         }
     }
-    
+
     # Mapeamentos completos
     ordem_para_cpf = {
-        "123456": "12345678900",  
+        "123456": "12345678900",
         "ORD12345": "12345678900",
         "ORD67890": "98765432100",
         "ORD54321": "11122233344",
@@ -776,7 +776,7 @@ def get_mock_data(tipo: str, valor: str) -> Dict[str, Any]:
         "STU5678": "55566677788",
         "PQR1234": "22233344455"
     }
-    
+
     cpf_key = None
     if tipo == "cpf" and valor in mock_database:
         cpf_key = valor
@@ -786,20 +786,55 @@ def get_mock_data(tipo: str, valor: str) -> Dict[str, Any]:
         cpf_key = telefone_para_cpf[valor]
     elif tipo == "placa" and valor in placa_para_cpf:
         cpf_key = placa_para_cpf[valor]
-    
+
     if cpf_key:
         logger.info(f"✅ Dados encontrados para {tipo}: {valor}")
         return mock_database[cpf_key]
-    
+
     logger.info(f"❌ Cliente não encontrado para {tipo}: {valor}")
     return {"sucesso": False, "mensagem": f"Cliente não encontrado para {tipo}"}
+
+# Função auxiliar para determinar etapas anteriores e próximas
+def get_status_details(current_status: str) -> Tuple[List[str], List[str]]:
+    full_pipeline = [
+        "Ordem de Serviço Aberta",
+        "Aguardando fotos para liberação da ordem",
+        "Fotos Recebidas",
+        "Peça Identificada",
+        "Ordem de Serviço Liberada",
+        "Serviço agendado com sucesso", # Pode ser um estado paralelo ao "Ordem Liberada" antes da execução
+        "Em andamento", # Execução
+        "Inspeção",
+        "Concluído"
+    ]
+    
+    current_index = -1
+    for i, step in enumerate(full_pipeline):
+        if step.lower() == current_status.lower():
+            current_index = i
+            break
+            
+    if current_index == -1: # Status não encontrado no pipeline
+        return [], []
+
+    completed_steps = [s for i, s in enumerate(full_pipeline) if i < current_index]
+    next_steps = [s for i, s in enumerate(full_pipeline) if i > current_index]
+    
+    # Ajustes para casos específicos onde o fluxo pode ter ramificações ou pulos lógicos
+    if current_status.lower() == "serviço agendado com sucesso":
+        # Se agendado, as anteriores são até a liberação, e as próximas são execução e inspeção/concluído
+        completed_steps = [s for s in full_pipeline if s.lower() in ["ordem de serviço aberta", "aguardando fotos para liberação da ordem", "fotos recebidas", "peça identificada", "ordem de serviço liberada"]]
+        next_steps = ["Em andamento", "Inspeção", "Concluído"]
+    
+    return completed_steps, next_steps
+
 
 # ===== BARRA DE PROGRESSO =====
 def get_progress_bar_html(client_data: Dict[str, Any]) -> str:
     """Gera HTML da barra de progresso baseado no status do cliente"""
     status = client_data['dados']['status']
     current_time = get_current_datetime()
-    
+
     steps = [
         {"label": "Ordem Aberta", "state": "pending"},
         {"label": "Aguardando Fotos", "state": "pending"},
@@ -809,42 +844,44 @@ def get_progress_bar_html(client_data: Dict[str, Any]) -> str:
         {"label": "Inspeção", "state": "pending"},
         {"label": "Concluído", "state": "pending"}
     ]
-    
+
     status_mapping = {
         "Ordem de Serviço Aberta": (0, "0%", "aberta"),
         "Aguardando fotos para liberação da ordem": (1, "14%", "aguardando"),
         "Fotos Recebidas": (1, "28%", "recebidas"),
         "Peça Identificada": (2, "42%", "identificada"),
         "Ordem de Serviço Liberada": (3, "57%", "liberada"),
-        "Serviço agendado com sucesso": (3, "57%", "agendado"),
-        "Em andamento": (4, "71%", "andamento"),
+        "Serviço agendado com sucesso": (3, "57%", "agendado"), # Mapeia para "Agendado"
+        "Em andamento": (4, "71%", "andamento"), # Mapeia para "Execução"
+        "Inspeção": (5, "85%", "inspecao"), # Novo estado para inspeção antes de concluído
         "Concluído": (6, "100%", "concluido")
     }
-    
+
     active_step, progress_percentage, status_class = status_mapping.get(status, (0, "0%", "desconhecido"))
-    
+
     # Configura estados das etapas
     for i, step in enumerate(steps):
         if i < active_step:
             step["state"] = "completed"
         elif i == active_step:
             step["state"] = "active"
-        elif i == active_step + 1 and active_step < len(steps) - 1:
-            step["state"] = "next"
-    
+        # Não precisa mais do "next" no HTML, a IA fará essa parte textual
+        # elif i == active_step + 1 and active_step < len(steps) - 1:
+        #     step["state"] = "next"
+
     # Gera HTML
     steps_html = ""
     for step in steps:
         state = step["state"]
-        next_highlight = '<div class="step-highlight">Próxima etapa</div>' if state == "next" else ''
+        # next_highlight = '<div class="step-highlight">Próxima etapa</div>' if state == "next" else ''
         steps_html += f'''
         <div class="timeline-step {state}">
             <div class="step-node"></div>
             <div class="step-label">{step["label"]}</div>
-            {next_highlight}
+            {'' if state != 'active' else '<div class="step-highlight">Etapa Atual</div>'}
         </div>
         '''
-    
+
     return f'''
     <div class="status-progress-container">
         <div class="status-current">
@@ -862,7 +899,7 @@ def get_progress_bar_html(client_data: Dict[str, Any]) -> str:
 def get_whatsapp_status_text(client_data: Dict[str, Any]) -> str:
     """Versão simplificada do status para WhatsApp"""
     status = client_data['dados']['status']
-    
+
     # Mapeia status para emojis e texto simples
     status_emoji = {
         "Ordem de Serviço Aberta": "📋",
@@ -872,39 +909,54 @@ def get_whatsapp_status_text(client_data: Dict[str, Any]) -> str:
         "Ordem de Serviço Liberada": "✅",
         "Serviço agendado com sucesso": "📅",
         "Em andamento": "🔧",
+        "Inspeção": "🔍", # Usando lupa para inspeção
         "Concluído": "✅"
     }
-    
+
     emoji = status_emoji.get(status, "📋")
     
-    # Cria timeline simplificada para WhatsApp
-    timeline_text = f"""
-📊 Timeline:
-{"✅" if status != "Ordem de Serviço Aberta" else "🔄"} Ordem Aberta
-{"✅" if status not in ["Ordem de Serviço Aberta", "Aguardando fotos para liberação da ordem"] else "⏳"} Fotos/Peça
-{"✅" if status in ["Em andamento", "Concluído"] else "⏳"} Agendado
-{"✅" if status == "Concluído" else "🔄" if status == "Em andamento" else "⏳"} Execução
-{"✅" if status == "Concluído" else "⏳"} Concluído
-"""
+    # Obtém detalhes das etapas para a timeline simplificada
+    completed, next_steps = get_status_details(status)
+
+    timeline_text_parts = ["📊 *Timeline do seu Atendimento:*"]
     
-    return f"{emoji} {status}\n\n{timeline_text}"
+    # Adicionar as etapas concluídas
+    for step in completed:
+        timeline_text_parts.append(f"✅ {step}")
+        
+    # Adicionar a etapa atual
+    timeline_text_parts.append(f"🔄 *{status}*")
+    
+    # Adicionar as próximas etapas
+    if next_steps:
+        timeline_text_parts.append("\n*Próximas etapas:*")
+        for step in next_steps:
+            timeline_text_parts.append(f"⏳ {step}")
+    else:
+        if status.lower() == "concluído":
+             timeline_text_parts.append("🎉 Serviço finalizado!")
+        else:
+             timeline_text_parts.append("Não há próximas etapas definidas para este status.")
+
+    return f"{emoji} Status Atual: {status}\n\n" + "\n".join(timeline_text_parts)
+
 
 # ===== AI SERVICE =====
 def get_ai_response(pergunta: str, cliente_info: Dict[str, Any], platform: str = "web") -> str:
     """Processa perguntas do cliente usando IA ou respostas predefinidas"""
     pergunta_lower = pergunta.lower()
     nome = cliente_info.get('dados', {}).get('nome', 'Cliente')
-    
+    current_status = cliente_info.get('dados', {}).get('status', 'Em processamento')
+
     # Log da pergunta
     logger.info(f"Processando pergunta ({platform}): {pergunta[:50]}...")
-    
+
     # Comandos especiais para WhatsApp
     if platform == "whatsapp":
         if pergunta_lower in ['status', 'situacao', 'situação']:
-            dados = cliente_info.get('dados', {})
-            status_text = get_whatsapp_status_text(cliente_info)
-            return f"Status atual do seu atendimento:\n\n{status_text}"
-        
+            # Redireciona para a função que já gera o texto detalhado do WhatsApp
+            return get_whatsapp_status_text(cliente_info)
+
         if pergunta_lower in ['ajuda', 'help', 'menu', 'opcoes', 'opções']:
             return """
 🤖 Comandos disponíveis:
@@ -917,10 +969,10 @@ def get_ai_response(pergunta: str, cliente_info: Dict[str, Any], platform: str =
 
 💬 Ou envie sua pergunta!
 """
-        
+
         if pergunta_lower in ['reiniciar', 'reset', 'nova consulta', 'recomeçar']:
             return "🔄 Consulta reiniciada!\n\nDigite seu CPF, telefone ou placa do veículo para nova consulta."
-    
+
     # Detecta quando cliente não entende ou está frustrado
     if any(keyword in pergunta_lower for keyword in ['não entende', 'não entendo', 'confuso', 'não sei', 'help', 'ajuda']):
         if platform == "whatsapp":
@@ -944,7 +996,7 @@ Sou a Clara, assistente virtual da CarGlass. Estou aqui para te ajudar com infor
 
 💬 Ou me diga: o que você gostaria de saber?
 """
-    
+
     # CORREÇÃO: Política de lojas mais restritiva e específica
     if any(keyword in pergunta_lower for keyword in ['loja', 'local', 'onde', 'endereço', 'trocar de loja', 'mudar local', 'mudar loja', 'troca de loja']):
         # SEMPRE orienta para central quando menciona trocar/mudar
@@ -1020,7 +1072,7 @@ Nossa equipe vai te ajudar com todas as informações! 😊
 
 Nossa equipe vai te ajudar com todas as informações!
 """
-    
+
     # Perguntas sobre garantia
     if any(keyword in pergunta_lower for keyword in ['garantia', 'seguro']):
         tipo_servico = cliente_info.get('dados', {}).get('tipo_servico', 'seu serviço')
@@ -1044,7 +1096,7 @@ Nossa equipe vai te ajudar com todas as informações!
 
 📞 Central: 0800-701-9495
 """
-    
+
     # Perguntas sobre atendimento humano
     if any(keyword in pergunta_lower for keyword in ['falar com pessoa', 'atendente', 'humano']):
         if platform == "whatsapp":
@@ -1067,7 +1119,7 @@ Nossa equipe vai te ajudar com todas as informações!
 • Segunda a Sexta: 8h às 20h
 • Sábado: 8h às 16h
 """
-    
+
     # Perguntas sobre opções de serviço
     if any(keyword in pergunta_lower for keyword in ['opção', 'opções', 'que serviços', 'posso fazer', 'oferecem']):
         return """
@@ -1084,164 +1136,112 @@ A CarGlass oferece diversos serviços para seu veículo:
 
 Qual serviço você gostaria de conhecer melhor?
 """
-    
-    # Para perguntas sobre status - usar GPT para resposta mais humanizada
-    if any(keyword in pergunta_lower for keyword in ['status', 'como está', 'situação', 'andamento', 'etapa', 'fase']):
+
+    # Para perguntas sobre status - usar GPT para resposta mais humanizada e detalhada
+    if any(keyword in pergunta_lower for keyword in ['etapa', 'progresso', 'andamento', 'fase', 'status', 'como está', 'situação']):
         if config.OPENAI_API_KEY and len(config.OPENAI_API_KEY) > 10:
             try:
                 import openai
                 openai.api_key = config.OPENAI_API_KEY
-                
+
                 dados = cliente_info.get('dados', {})
                 status_atual = dados.get('status', 'Em processamento')
                 tipo_servico = dados.get('tipo_servico', 'serviço')
                 
+                # Obtém as etapas anteriores e próximas
+                completed_steps, next_steps = get_status_details(status_atual)
+                
+                completed_str = ", ".join([s.replace('Ordem de Serviço ', 'Ordem ').replace('Aguardando fotos para liberação da ordem', 'Aguardando fotos').replace('Serviço agendado com sucesso', 'Agendado') for s in completed_steps]) if completed_steps else "Nenhuma etapa anterior registrada."
+                next_str = ", ".join([s.replace('Ordem de Serviço ', 'Ordem ').replace('Aguardando fotos para liberação da ordem', 'Aguardando fotos').replace('Serviço agendado com sucesso', 'Agendado') for s in next_steps]) if next_steps else "Serviço está na última etapa ou concluído."
+
+
                 system_message = f"""
-                Você é Clara, assistente virtual da CarGlass falando com {nome}.
-                
-                O status atual do atendimento é: "{status_atual}"
-                Tipo de serviço: {tipo_servico}
-                
-                IMPORTANTE: Responda como se fosse uma pessoa real explicando qual é o status atual.
-                Seja natural, amigável e humana. Não liste etapas ou use formatação técnica.
-                Explique o que o status significa de forma conversacional.
-                NÃO use asteriscos ou formatação markdown excessiva.
-                
-                Se precisar de mais detalhes, mencione nosso telefone: 0800-701-9495
-                """
-                
+Você é Clara, assistente virtual da CarGlass, falando com {nome}.
+Seu objetivo é explicar o status do atendimento de forma detalhada, amigável e humana.
+
+Informações do atendimento:
+- Status atual: "{status_atual}"
+- Tipo de serviço: {tipo_servico}
+- Etapas anteriores concluídas: {completed_str}
+- Próximas etapas: {next_str}
+
+Instruções:
+1. Explique o status atual de forma clara e conversacional.
+2. Mencione brevemente as etapas que já foram concluídas (se houver).
+3. Informe qual(is) é(são) a(s) próxima(s) etapa(s) do processo.
+4. Mantenha um tom otimista e prestativo.
+5. Se o serviço já foi concluído, diga isso de forma celebratória.
+6. NÃO use asteriscos duplos, sublinhados ou qualquer formatação markdown excessiva na resposta, a não ser que seja um emoji.
+7. Não se refira à sua própria capacidade de IA.
+8. Lembre o cliente que pode ligar para 0800-701-9495 para mais detalhes.
+9. Finalize perguntando como mais pode ajudar.
+"""
                 response = openai.ChatCompletion.create(
                     model=config.OPENAI_MODEL,
                     messages=[
                         {"role": "system", "content": system_message},
-                        {"role": "user", "content": f"Como está meu atendimento?"}
+                        {"role": "user", "content": f"Qual o status do meu atendimento para {tipo_servico}?"}
                     ],
-                    max_tokens=200,
+                    max_tokens=250, # Aumentado para permitir mais detalhes
                     temperature=0.7
                 )
-                
+
                 return response.choices[0].message['content'].strip()
             except Exception as e:
-                logger.error(f"OpenAI erro: {e}")
-        
-        # Fallback humanizado para status
+                logger.error(f"OpenAI erro ao gerar resposta de status detalhada: {e}")
+
+        # Fallback humanizado melhorado para status
+        # Se a OpenAI falhar ou não estiver configurada, ainda tentamos dar mais detalhes
         dados = cliente_info.get('dados', {})
         status = dados.get('status', 'Em processamento')
+        previsao = dados.get('previsao_conclusao', '')
         
-        if platform == "whatsapp":
-            if "agendado" in status.lower():
-                previsao_text = f" com previsão para {dados.get('previsao_conclusao', '')}" if dados.get('previsao_conclusao') else ""
-                return f"Oi {nome}! 😊 Seu serviço já está agendado{previsao_text}. Nossa equipe está organizando tudo para o dia marcado. Em breve você receberá mais detalhes!"
-            elif "andamento" in status.lower():
-                previsao_text = f" com previsão de conclusão {dados.get('previsao_conclusao', '')}" if dados.get('previsao_conclusao') else ""
-                return f"Olá {nome}! 🔧 Seu atendimento está em andamento{previsao_text}. Nossa equipe técnica está trabalhando no seu veículo neste momento."
-            elif "concluido" in status.lower():
-                return f"Oi {nome}! ✅ Ótima notícia - seu serviço foi concluído com sucesso!"
-            else:
-                return f"Oi {nome}! 📋 Seu atendimento está com status: {status}. Nossa equipe está cuidando de tudo!"
+        completed_steps, next_steps = get_status_details(status)
+        completed_str = ", ".join([s.replace('Ordem de Serviço ', 'Ordem ').replace('Aguardando fotos para liberação da ordem', 'Aguardando fotos') for s in completed_steps])
+        next_str = ", ".join([s.replace('Ordem de Serviço ', 'Ordem ').replace('Aguardando fotos para liberação da ordem', 'Aguardando fotos') for s in next_steps])
+        
+        response_parts = []
+        response_parts.append(f"Olá {nome}! Seu atendimento está atualmente com o status: *{status}*.")
+        
+        if completed_str:
+            response_parts.append(f"Já passamos pelas etapas de: {completed_str}.")
+            
+        if next_str:
+            response_parts.append(f"A(s) próxima(s) etapa(s) será(ão): {next_str}.")
+        elif status.lower() == "concluído":
+            response_parts.append("O serviço já foi concluído com sucesso! 🎉")
         else:
-            if "agendado" in status.lower():
-                previsao_text = f" com previsão para {dados.get('previsao_conclusao', '')}" if dados.get('previsao_conclusao') else ""
-                return f"Olá {nome}! Seu serviço já está agendado{previsao_text}. Nossa equipe está organizando tudo para o dia marcado."
-            elif "andamento" in status.lower():
-                previsao_text = f" com previsão de conclusão {dados.get('previsao_conclusao', '')}" if dados.get('previsao_conclusao') else ""
-                return f"Olá {nome}! Seu atendimento está em andamento{previsao_text}. Nossa equipe técnica está trabalhando no seu veículo."
-            elif "concluido" in status.lower():
-                return f"Olá {nome}! Ótima notícia - seu serviço foi concluído com sucesso!"
-            else:
-                return f"Olá {nome}! Seu atendimento está com status: {status}. Nossa equipe está cuidando de tudo!"
-    
-    # Perguntas sobre etapas ou progresso
-    if any(keyword in pergunta_lower for keyword in ['etapa', 'progresso', 'andamento', 'fase']):
-        dados = cliente_info.get('dados', {})
-        status = dados.get('status', 'Em processamento')
+            response_parts.append("Estamos trabalhando nisso e em breve teremos atualizações!")
+
+        if previsao:
+            response_parts.append(f"A previsão de conclusão é: {previsao}.")
+            
+        response_parts.append("\nSe precisar de mais detalhes, pode me chamar aqui ou ligar no nosso telefone 0800-701-9495. Estou aqui para ajudar!")
         
-        if status == "Serviço agendado com sucesso":
-            return """
-Seu serviço foi agendado com sucesso e está aguardando a data marcada para execução.
+        return "\n".join(response_parts)
 
-As próximas etapas serão:
-1. Abertura da ordem de serviço
-2. Identificação da peça necessária
-3. Execução do serviço
-4. Inspeção de qualidade
-5. Entrega do veículo
-"""
-        elif status == "Ordem de Serviço Liberada":
-            return """
-Sua ordem de serviço já foi liberada! Isso significa que já identificamos o serviço necessário e autorizamos sua execução.
 
-As próximas etapas são:
-1. Separação da peça para o serviço
-2. Execução do serviço
-3. Inspeção de qualidade
-4. Entrega do veículo
-"""
-        elif status == "Peça Identificada":
-            return """
-A peça necessária para o seu veículo já foi identificada e separada em nosso estoque.
-
-As próximas etapas são:
-1. Execução do serviço
-2. Inspeção de qualidade
-3. Entrega do veículo
-"""
-        elif status == "Fotos Recebidas":
-            return """
-Recebemos as fotos do seu veículo e estamos analisando para preparar tudo para o atendimento.
-
-As próximas etapas são:
-1. Confirmação da peça necessária
-2. Execução do serviço
-3. Inspeção de qualidade
-4. Entrega do veículo
-"""
-        elif status == "Aguardando fotos para liberação da ordem":
-            return """
-Estamos aguardando as fotos do seu veículo para liberação da ordem de serviço.
-
-Você pode enviar as fotos pelo telefone 0800-701-9495 ou pelo e-mail atendimento@carglass.com.br.
-
-Após recebermos as fotos, as próximas etapas serão:
-1. Liberação da ordem de serviço
-2. Identificação da peça
-3. Execução do serviço
-4. Inspeção de qualidade
-5. Entrega do veículo
-"""
-        elif status == "Ordem de Serviço Aberta":
-            return """
-Sua ordem de serviço já foi aberta! Estamos nos preparando para realizar o atendimento.
-
-As próximas etapas são:
-1. Envio e análise de fotos
-2. Liberação da ordem
-3. Identificação da peça
-4. Execução do serviço
-5. Inspeção de qualidade
-6. Entrega do veículo
-"""
-    
-    # Fallback usando OpenAI ou genérico para outras perguntas
+    # Fallback usando OpenAI ou genérico para outras perguntas (se não for sobre status)
     if config.OPENAI_API_KEY and len(config.OPENAI_API_KEY) > 10:
         try:
             import openai
             openai.api_key = config.OPENAI_API_KEY
-            
+
             dados = cliente_info.get('dados', {})
             system_message = f"""
-            Você é Clara, assistente virtual da CarGlass. Cliente: {nome}
-            Status: {dados.get('status', 'N/A')}
-            Serviço: {dados.get('tipo_servico', 'N/A')}
-            
-            IMPORTANTE: Responda como uma pessoa real, de forma natural e conversacional.
-            Seja simpática, prestativa e humana. Não use listas ou formatação técnica.
-            NÃO use asteriscos duplos ou formatação markdown excessiva.
-            Mantenha um tom amigável e profissional.
-            
-            Central: 0800-701-9495
-            """
-            
+Você é Clara, assistente virtual da CarGlass. Cliente: {nome}
+Status atual do atendimento: {dados.get('status', 'N/A')}
+Tipo de serviço: {dados.get('tipo_servico', 'N/A')}
+
+IMPORTANTE:
+- Responda como uma pessoa real, de forma natural e conversacional.
+- Seja simpática, prestativa e humana.
+- NÃO use asteriscos duplos ou formatação markdown excessiva, a não ser para emojis.
+- Mantenha um tom amigável e profissional.
+- Se precisar de mais detalhes, mencione o telefone da central: 0800-701-9495.
+- Evite listar etapas ou informações técnicas que não foram pedidas explicitamente, a menos que seja sobre o status.
+"""
+
             response = openai.ChatCompletion.create(
                 model=config.OPENAI_MODEL,
                 messages=[
@@ -1251,11 +1251,11 @@ As próximas etapas são:
                 max_tokens=150,
                 temperature=0.7
             )
-            
+
             return response.choices[0].message['content'].strip()
         except Exception as e:
             logger.error(f"OpenAI erro: {e}")
-    
+
     # Fallback genérico melhorado
     if platform == "whatsapp":
         return f"Entendi sua pergunta, {nome}! 😊\n\nPara informações específicas:\n📞 0800-701-9495"
@@ -1266,9 +1266,9 @@ As próximas etapas são:
 def process_identification(user_input: str, session_data: SessionData) -> str:
     """Processa identificação do cliente"""
     tipo, valor = detect_identifier_type(user_input)
-    
+
     logger.info(f"🔍 Processando identificação - Tipo: {tipo}, Valor: {valor[:4] if valor else 'None'}***")
-    
+
     if not tipo:
         logger.info("❌ Tipo de identificador não reconhecido")
         if session_data.platform == "whatsapp":
@@ -1289,10 +1289,10 @@ Por favor, forneça um identificador válido:
 🚗 Placa do veículo
 🔢 Número da ordem de serviço
 """
-    
+
     client_data = get_client_data(tipo, valor)
     logger.info(f"📊 Resultado da consulta - Sucesso: {client_data.get('sucesso')}")
-    
+
     if not client_data.get('sucesso'):
         logger.info(f"❌ Cliente não encontrado: {tipo} = {valor}")
         if session_data.platform == "whatsapp":
@@ -1313,10 +1313,10 @@ Você pode tentar:
 • Usar outro identificador
 • Entrar em contato: 📞 0800-701-9495
 """
-    
+
     session_data.client_identified = True
     session_data.client_info = client_data
-    
+
     dados = client_data['dados']
     nome = dados.get('nome', 'Cliente')
     status = dados.get('status', 'Em processamento')
@@ -1326,164 +1326,93 @@ Você pode tentar:
     modelo = veiculo.get('modelo', 'N/A')
     ano = veiculo.get('ano', 'N/A')
     placa = veiculo.get('placa', 'N/A')
-    
+
     logger.info(f"✅ Cliente identificado: {nome} - Status: {status}")
-    
+
     # Resposta conversacional humanizada - SEM tags de status visuais
     if config.OPENAI_API_KEY and len(config.OPENAI_API_KEY) > 10:
         try:
             import openai
             openai.api_key = config.OPENAI_API_KEY
-            
+
+            # Obtém as etapas anteriores e próximas para a mensagem de identificação
+            completed_steps, next_steps = get_status_details(status)
+            completed_str = ", ".join([s.replace('Ordem de Serviço ', 'Ordem ').replace('Aguardando fotos para liberação da ordem', 'Aguardando fotos').replace('Serviço agendado com sucesso', 'Agendado') for s in completed_steps]) if completed_steps else "nenhuma etapa anterior."
+            next_str = ", ".join([s.replace('Ordem de Serviço ', 'Ordem ').replace('Aguardando fotos para liberação da ordem', 'Aguardando fotos').replace('Serviço agendado com sucesso', 'Agendado') for s in next_steps]) if next_steps else "o serviço está na última etapa ou concluído."
+
+
             system_message = f"""
-            Você é Clara, assistente virtual da CarGlass, falando com {nome}.
-            
-            Informações do atendimento:
-            - Ordem: {ordem}
-            - Status atual: {status}
-            - Serviço: {tipo_servico}
-            - Veículo: {modelo} ({ano})
-            - Placa: {placa}
-            
-            IMPORTANTE: 
-            1. Cumprimente o cliente pelo nome de forma natural
-            2. Explique o status atual de forma conversacional e humana
-            3. NUNCA mencione loja específica - se precisar falar de local, diga apenas "nossa equipe" ou "uma de nossas unidades"
-            4. Se cliente perguntar sobre loja, oriente para ligar 0800-701-9495
-            5. Seja natural, como se fosse uma pessoa real falando
-            6. NÃO use formatação excessiva ou asteriscos duplos
-            7. Inclua detalhes do veículo e ordem de forma natural na conversa
-            8. Termine perguntando como pode ajudar de forma amigável
-            
-            Mantenha um tom conversacional e amigável, como se estivesse falando pessoalmente.
-            """
-            
+Você é Clara, assistente virtual da CarGlass, falando com {nome}.
+Acabamos de identificar o atendimento do cliente.
+
+Informações do atendimento:
+- Ordem: {ordem}
+- Status atual: {status}
+- Serviço: {tipo_servico}
+- Veículo: {modelo} ({ano})
+- Placa: {placa}
+- Etapas anteriores: {completed_str}
+- Próximas etapas: {next_str}
+
+IMPORTANTE:
+1. Cumprimente o cliente pelo nome de forma natural e amigável.
+2. Explique o status atual, mencionando as etapas que já foram concluídas e as próximas etapas.
+3. Integre os detalhes do veículo e da ordem de serviço de forma natural na conversa.
+4. NUNCA mencione loja específica pelo nome. Se precisar falar de local, diga apenas "em uma de nossas unidades" ou "nossa equipe".
+5. Seja natural, como se fosse uma pessoa real falando.
+6. NÃO use formatação excessiva ou asteriscos duplos, a não ser para emojis.
+7. Termine perguntando como pode ajudar de forma amigável e ofereça o telefone da central (0800-701-9495) para mais detalhes, se julgar relevante.
+"""
+
             response = openai.ChatCompletion.create(
                 model=config.OPENAI_MODEL,
                 messages=[
                     {"role": "system", "content": system_message},
-                    {"role": "user", "content": f"Cliente forneceu {tipo}: {valor}"}
+                    {"role": "user", "content": f"Cliente forneceu {tipo}: {valor}. Responda ao cliente agora."}
                 ],
-                max_tokens=300,
+                max_tokens=350, # Aumentado para mais detalhes
                 temperature=0.7
             )
-            
-            logger.info("✅ Resposta OpenAI gerada com sucesso")
+
+            logger.info("✅ Resposta OpenAI gerada com sucesso para identificação")
             return response.choices[0].message['content'].strip()
-            
+
         except Exception as e:
             logger.error(f"❌ OpenAI erro na identificação: {e}")
-    
-    # Fallback humanizado sem OpenAI
+
+    # Fallback humanizado sem OpenAI (melhorado para ser mais detalhado)
     previsao = dados.get('previsao_conclusao', '')
-    
-    if session_data.platform == "whatsapp":
-        if "agendado" in status.lower():
-            previsao_text = f" com previsão para {previsao}" if previsao else ""
-            return f"""
-👋 Olá {nome}!  
+    completed_steps, next_steps = get_status_details(status)
+    completed_str = ", ".join([s.replace('Ordem de Serviço ', 'Ordem ').replace('Aguardando fotos para liberação da ordem', 'Aguardando fotos') for s in completed_steps])
+    next_str = ", ".join([s.replace('Ordem de Serviço ', 'Ordem ').replace('Aguardando fotos para liberação da ordem', 'Aguardando fotos') for s in next_steps])
 
-Sua ordem de serviço {ordem} para {tipo_servico} no seu {modelo} ({ano}), placa {placa}, está agendada{previsao_text}.
+    response_parts = []
+    response_parts.append(f"👋 Olá {nome}! Encontrei suas informações.")
+    response_parts.append(f"Sua ordem de serviço *{ordem}* para *{tipo_servico}* no seu *{modelo}* ({ano}), placa *{placa}*, está atualmente com o status: *{status}*.")
 
-🏪 Nossa equipe já está organizando tudo para você.
-
-💬 Como posso te ajudar?
-"""
-        elif "andamento" in status.lower():
-            previsao_text = f" com previsão de conclusão {previsao}" if previsao else ""
-            return f"""
-👋 Olá {nome}!  
-
-Sua ordem de serviço {ordem} está em andamento. Nossa equipe está trabalhando na {tipo_servico} do seu {modelo} ({ano}), placa {placa}{previsao_text}.
-
-🔧 Tudo está correndo bem e dentro do prazo previsto.
-
-💬 Precisa de alguma informação específica?
-"""
-        elif "concluido" in status.lower():
-            return f"""
-👋 Olá {nome}!  
-
-✅ Ótima notícia! Sua ordem {ordem} foi concluída com sucesso. A {tipo_servico} do seu {modelo} ({ano}), placa {placa}, está pronta.
-
-🏪 Você pode retirar seu veículo em nossa unidade.
-
-💬 Posso te ajudar com mais alguma coisa?
-"""
-        elif "aguardando fotos" in status.lower():
-            return f"""
-👋 Olá {nome}!  
-
-Sua ordem {ordem} para {tipo_servico} no seu {modelo} ({ano}), placa {placa}, está aguardando as fotos para darmos continuidade.
-
-📷 Você pode enviar pelo nosso sistema ou entrar em contato: 0800-701-9495
-
-💬 Precisa de ajuda para enviar as fotos?
-"""
-        else:
-            return f"""
-👋 Olá {nome}!  
-
-Encontrei sua ordem {ordem} para {tipo_servico} no seu {modelo} ({ano}), placa {placa}. No momento está: {status}.
-
-🏪 Nossa equipe está cuidando de tudo para você.
-
-💬 Como posso te ajudar?
-"""
+    if completed_str:
+        response_parts.append(f"Já passamos pelas etapas de: {completed_str}.")
+    if next_str:
+        response_parts.append(f"A(s) próxima(s) etapa(s) será(ão): {next_str}.")
+    elif status.lower() == "concluído":
+        response_parts.append("O serviço já foi concluído com sucesso! 🎉")
     else:
-        # Versão web
-        if "agendado" in status.lower():
-            previsao_text = f" com previsão para {previsao}" if previsao else ""
-            return f"""
-👋 Olá {nome}! Encontrei suas informações.
+        response_parts.append("Estamos trabalhando nisso e em breve teremos atualizações!")
 
-Sua ordem de serviço {ordem} para {tipo_servico} no seu {modelo} ({ano}), placa {placa}, está agendada{previsao_text}.
 
-🏪 Nossa equipe já está organizando tudo para você.
+    if previsao:
+        response_parts.append(f"A previsão de conclusão é: {previsao}.")
 
-💬 Como posso te ajudar?
-"""
-        elif "andamento" in status.lower():
-            previsao_text = f" com previsão de conclusão {previsao}" if previsao else ""
-            return f"""
-👋 Olá {nome}! Encontrei suas informações.
+    response_parts.append("\nNossa equipe está cuidando de tudo para você. Como posso te ajudar?")
+    
+    # Adiciona a informação de contato no final para todas as plataformas
+    if session_data.platform == "whatsapp":
+        response_parts.append("Se precisar de mais informações, pode me chamar aqui ou ligar no nosso telefone 0800-701-9495. Estou aqui para ajudar!")
+    else:
+        response_parts.append("Se precisar de mais informações, entre em contato: 📞 0800-701-9495.")
 
-Sua ordem de serviço {ordem} está em andamento. Nossa equipe está trabalhando na {tipo_servico} do seu {modelo} ({ano}), placa {placa}{previsao_text}.
+    return "\n".join(response_parts)
 
-🔧 Tudo está correndo bem e dentro do prazo previsto.
-
-💬 Precisa de alguma informação específica?
-"""
-        elif "concluído" in status.lower():
-            return f"""
-👋 Olá {nome}! Encontrei suas informações.
-
-✅ Ótima notícia! Sua ordem {ordem} foi concluída com sucesso. A {tipo_servico} do seu {modelo} ({ano}), placa {placa}, está pronta.
-
-🏪 Você pode retirar seu veículo em nossa unidade.
-
-💬 Posso te ajudar com mais alguma coisa?
-"""
-        elif "aguardando fotos" in status.lower():
-            return f"""
-👋 Olá {nome}! Encontrei suas informações.
-
-Sua ordem {ordem} para {tipo_servico} no seu {modelo} ({ano}), placa {placa}, está aguardando as fotos para darmos continuidade.
-
-📷 Você pode enviar pelo nosso sistema ou entrar em contato: 0800-701-9495
-
-💬 Precisa de ajuda para enviar as fotos?
-"""
-        else:
-            return f"""
-👋 Olá {nome}! Encontrei suas informações.
-
-Sua ordem {ordem} para {tipo_servico} no seu {modelo} ({ano}), placa {placa}, está com status: {status}.
-
-🏪 Nossa equipe está cuidando de tudo para você.
-
-💬 Como posso te ajudar?
-"""
 
 # ===== MIDDLEWARES DE SEGURANÇA PARA HML =====
 
@@ -1491,12 +1420,12 @@ Sua ordem {ordem} para {tipo_servico} no seu {modelo} ({ano}), placa {placa}, es
 def hml_security_check():
     """Verificações básicas para HML"""
     ip = get_remote_address()
-    
+
     # Apenas bloqueia abuse extremo
     if security_manager.is_ip_blocked(ip):
         logger.warning(f"🚫 IP bloqueado: {ip}")
         abort(429)  # Too Many Requests
-    
+
     # Log para monitoramento
     if request.endpoint in ['send_message', 'whatsapp_webhook']:
         security_manager.log_request(ip, request.endpoint)
@@ -1507,10 +1436,10 @@ def hml_security_headers(response):
     # Headers mínimos que não quebram funcionalidade
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['X-Frame-Options'] = 'SAMEORIGIN'  # Menos restritivo
-    
+
     # Remove headers que vazam informações
     response.headers.pop('Server', None)
-    
+
     return response
 
 # ===== ROTAS FLASK =====
@@ -1539,7 +1468,7 @@ def get_messages():
             if not session_data:
                 session_data = session_manager.create_session()
                 session['session_id'] = session_data.session_id
-        
+
         return jsonify({"messages": session_data.messages})
     except Exception as e:
         logger.error(f"Erro ao recuperar mensagens: {e}")
@@ -1557,34 +1486,34 @@ def send_message():
     """Versão para homologação"""
     try:
         ip = get_remote_address()
-        
+
         # Sanitização básica
         user_input = sanitize_input(request.form.get('message', ''))
-        
+
         if not user_input:
             return jsonify({'error': 'Mensagem vazia'}), 400
-        
+
         logger.info(f"📨 Mensagem HML de {ip[:8]}***: {user_input[:50]}...")
-        
+
         # Lógica original mantida
         session_id = session.get('session_id')
         session_data = session_manager.get_session(session_id)
-        
+
         if not session_data:
             session_data = session_manager.create_session()
             session['session_id'] = session_data.session_id
-        
+
         session_data.add_message("user", user_input)
-        
+
         if not session_data.client_identified:
             response = process_identification(user_input, session_data)
         else:
             response = get_ai_response(user_input, session_data.client_info, session_data.platform)
-        
+
         session_data.add_message("assistant", response)
-        
+
         return jsonify({'messages': session_data.messages})
-        
+
     except Exception as e:
         logger.error(f"Erro HML send_message: {e}")
         logger.error(traceback.format_exc())
@@ -1595,29 +1524,29 @@ def send_message():
 def whatsapp_webhook():
     """Webhook WhatsApp para homologação"""
     ip = get_remote_address()
-    
+
     if not twilio_handler.is_enabled():
         return "Twilio not configured", 400
-    
+
     # VALIDAÇÃO CRÍTICA (mesmo em HML)
     if not security_manager.validate_twilio_webhook(request):
         logger.error(f"🚨 Webhook Twilio inválido de {ip}")
         abort(403)
-    
+
     try:
         # Lógica original mantida
         message_data = twilio_handler.process_incoming_message(request.form)
-        
+
         if not message_data:
             return "Bad request", 400
-        
+
         phone = message_data['phone']
         message_text = sanitize_input(message_data['message'])
-        
+
         logger.info(f"📱 WhatsApp HML de {phone[:6]}***: {message_text[:30]}...")
-        
+
         session_data = session_manager.get_whatsapp_session(phone)
-        
+
         if message_text.lower() in ['reiniciar', 'reset', 'nova consulta']:
             if session_data.session_id in session_manager.sessions:
                 session_manager._remove_session(session_data.session_id)
@@ -1625,19 +1554,19 @@ def whatsapp_webhook():
             response = "🔄 Consulta reiniciada!\n\nDigite seu CPF, telefone ou placa do veículo."
         else:
             session_data.add_message("user", message_text)
-            
+
             if not session_data.client_identified:
                 response = process_identification(message_text, session_data)
             else:
                 response = get_ai_response(message_text, session_data.client_info, "whatsapp")
-            
+
             session_data.add_message("assistant", response)
-        
+
         formatted_response = format_for_whatsapp(response)
         success = twilio_handler.send_message(phone, formatted_response)
-        
+
         return twilio_handler.create_twiml_response(), 200
-        
+
     except Exception as e:
         logger.error(f"❌ Erro webhook WhatsApp HML: {e}")
         logger.error(traceback.format_exc())
@@ -1649,10 +1578,10 @@ def reset():
         session_id = session.get('session_id')
         if session_id and session_id in session_manager.sessions:
             session_manager._remove_session(session_id)
-        
+
         session_data = session_manager.create_session()
         session['session_id'] = session_data.session_id
-        
+
         return jsonify({'messages': session_data.messages})
     except Exception as e:
         logger.error(f"Erro ao reiniciar: {e}")
@@ -1666,17 +1595,17 @@ def test_openai():
             "status": "error",
             "message": "OPENAI_API_KEY não configurada"
         })
-    
+
     if len(config.OPENAI_API_KEY) < 10:
         return jsonify({
-            "status": "error",  
+            "status": "error",
             "message": f"OPENAI_API_KEY parece inválida (muito curta): {config.OPENAI_API_KEY[:10]}..."
         })
-    
+
     try:
         import openai
         openai.api_key = config.OPENAI_API_KEY
-        
+
         # Teste simples da API
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",  # Modelo mais barato para teste
@@ -1686,14 +1615,14 @@ def test_openai():
             max_tokens=10,
             temperature=0
         )
-        
+
         return jsonify({
             "status": "success",
             "message": "OpenAI configurada corretamente",
             "response": response.choices[0].message['content'],
             "model": config.OPENAI_MODEL
         })
-        
+
     except Exception as e:
         return jsonify({
             "status": "error",
@@ -1708,9 +1637,9 @@ def health_check():
         # Cleanup periódico
         cache.cleanup_expired()
         session_manager._cleanup_expired()
-        
+
         stats = session_manager.get_stats()
-        
+
         return jsonify({
             "status": "healthy",
             "timestamp": get_current_time(),
@@ -1725,7 +1654,7 @@ def health_check():
                 "session_timeout": config.SESSION_TIMEOUT,
                 "cache_ttl": config.CACHE_TTL
             },
-            "version": "2.1"
+            "version": "2.2" # Versão atualizada
         })
     except Exception as e:
         logger.error(f"Erro no health check: {e}")
@@ -1743,7 +1672,7 @@ def whatsapp_status():
             "enabled": False,
             "error": "Twilio não configurado - verifique TWILIO_ACCOUNT_SID e TWILIO_AUTH_TOKEN"
         }), 400
-    
+
     return jsonify({
         "enabled": True,
         "whatsapp_number": config.TWILIO_WHATSAPP_NUMBER,
@@ -1785,19 +1714,19 @@ def security_test():
         "rate_limiting": False,
         "twilio_validation": False
     }
-    
+
     # Teste sanitização
     malicious_input = "<script>alert('xss')</script>Test"
     sanitized = sanitize_input(malicious_input)
     test_results["input_sanitization"] = "<script>" not in sanitized
-    
+
     # Teste Twilio (se configurado)
     if config.TWILIO_AUTH_TOKEN:
         test_results["twilio_validation"] = True
-    
+
     # Rate limiting está ativo se chegou aqui
     test_results["rate_limiting"] = True
-    
+
     return jsonify({
         "environment": "HML",
         "security_tests": test_results,
@@ -1809,7 +1738,7 @@ def debug_sessions():
     """Endpoint para debug das sessões (apenas em modo DEBUG)"""
     if not config.DEBUG:
         return jsonify({"error": "Debug mode not enabled"}), 403
-    
+
     try:
         sessions_info = []
         for session_id, session_data in session_manager.sessions.items():
@@ -1822,7 +1751,7 @@ def debug_sessions():
                 "last_activity": time.strftime("%H:%M:%S", time.localtime(session_data.last_activity)),
                 "phone_number": session_data.phone_number[:4] + "***" if session_data.phone_number else None
             })
-        
+
         return jsonify({
             "total_sessions": len(sessions_info),
             "sessions": sessions_info,
@@ -1837,17 +1766,17 @@ def debug_cache():
     """Endpoint para debug do cache (apenas em modo DEBUG)"""
     if not config.DEBUG:
         return jsonify({"error": "Debug mode not enabled"}), 403
-    
+
     try:
         cache_info = {}
         current_time = time.time()
-        
+
         for key, item in cache.cache.items():
             cache_info[key] = {
                 "expires_in": max(0, int(item['expires'] - current_time)),
                 "size": len(str(item['value']))
             }
-        
+
         return jsonify({
             "cache_size": len(cache.cache),
             "max_items": cache.max_items,
@@ -1879,42 +1808,42 @@ def handle_exception(e):
 def initialize_app():
     """Inicializa componentes da aplicação"""
     logger.info("🔧 Inicializando componentes da aplicação...")
-    
+
     # Cleanup inicial
     cache.cleanup_expired()
     session_manager._cleanup_expired()
-    
+
     # Testa configurações
     if config.OPENAI_API_KEY:
         logger.info("✅ OpenAI API Key configurada")
     else:
         logger.warning("⚠️ OpenAI API Key não configurada - usando fallbacks")
-    
+
     if twilio_handler.is_enabled():
         logger.info("✅ Twilio WhatsApp habilitado")
     else:
         logger.warning("⚠️ Twilio WhatsApp desabilitado")
-    
+
     logger.info("✅ Aplicação inicializada com sucesso")
 
 if __name__ == '__main__':
-    logger.info("🚀 CarGlass Assistant v2.1 + Twilio WhatsApp iniciando...")
+    logger.info("🚀 CarGlass Assistant v2.2 + Twilio WhatsApp iniciando...")
     logger.info(f"Modo API: {'REAL' if config.USE_REAL_API else 'SIMULAÇÃO'}")
     logger.info(f"OpenAI: {'CONFIGURADO' if config.OPENAI_API_KEY else 'FALLBACK'}")
     logger.info(f"Twilio WhatsApp: {'HABILITADO' if twilio_handler.is_enabled() else 'DESABILITADO'}")
     logger.info(f"Debug Mode: {'HABILITADO' if config.DEBUG else 'DESABILITADO'}")
-    
+
     if twilio_handler.is_enabled():
         logger.info(f"📱 WhatsApp número: {config.TWILIO_WHATSAPP_NUMBER}")
         logger.info(f"🔗 Webhook URL: http://localhost:5000/whatsapp/webhook (configure no Twilio)")
     else:
         logger.warning("⚠️ Para habilitar WhatsApp, configure as variáveis:")
-        logger.warning("    TWILIO_ACCOUNT_SID=ACxxxxx")
-        logger.warning("    TWILIO_AUTH_TOKEN=xxxxx")
-        logger.warning("    TWILIO_WHATSAPP_NUMBER=whatsapp:+14155238886")
-    
+        logger.warning("    TWILIO_ACCOUNT_SID=ACxxxxx")
+        logger.warning("    TWILIO_AUTH_TOKEN=xxxxx")
+        logger.warning("    TWILIO_WHATSAPP_NUMBER=whatsapp:+14155238886")
+
     # Inicializa componentes
     initialize_app()
-    
+
     # Inicia aplicação
     app.run(debug=config.DEBUG, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
