@@ -12,7 +12,7 @@ import json
 from collections import defaultdict
 import hashlib
 
-from flask import Flask, render_template, request, jsonify, session
+from flask import Flask, render_template, request, jsonify, session, abort # Importe 'abort' aqui
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from twilio.request_validator import RequestValidator
@@ -34,7 +34,7 @@ class Config:
     OPENAI_API_KEY: str = os.getenv('OPENAI_API_KEY', '')
     OPENAI_MODEL: str = os.getenv('OPENAI_MODEL', 'gpt-4-turbo')
     CARGLASS_API_URL: str = os.getenv('CARGLASS_API_URL', 'http://10.10.100.240:3000/api/status')
-    USE_REAL_API: bool = os.getenv('USE_REAL_API', 'true').lower() == 'true'
+    USE_REAL_API: bool = os.getenv('USE_REAL_API', 'true').lower() == 'true') # Corrigido aqui
     SESSION_TIMEOUT: int = int(os.getenv('SESSION_TIMEOUT', '1800'))
     CACHE_TTL: int = int(os.getenv('CACHE_TTL', '300'))
     
@@ -232,7 +232,7 @@ class HMLSecurityManager:
         """CRÍTICO: Valida webhook mesmo em HML"""
         if not config.TWILIO_AUTH_TOKEN:
             logger.warning("⚠️ TWILIO_AUTH_TOKEN não configurado")
-            return True  # Permite em desenvolvimento local
+            return True  # Permite em desenvolvimento local (CUIDADO: APENAS PARA DEV/TESTE)
         
         try:
             validator = RequestValidator(config.TWILIO_AUTH_TOKEN)
@@ -749,7 +749,7 @@ def get_mock_data(tipo: str, valor: str) -> Dict[str, Any]:
     
     # Mapeamentos completos
     ordem_para_cpf = {
-        "123456": "12345678900", 
+        "123456": "12345678900",  
         "ORD12345": "12345678900",
         "ORD67890": "98765432100",
         "ORD54321": "11122233344",
@@ -1111,6 +1111,254 @@ Qual serviço você gostaria de conhecer melhor?
                 """
                 
                 response = openai.ChatCompletion.create(
+                    model=config.OPENAI_MODEL,
+                    messages=[
+                        {"role": "system", "content": system_message},
+                        {"role": "user", "content": f"Como está meu atendimento?"}
+                    ],
+                    max_tokens=200,
+                    temperature=0.7
+                )
+                
+                return response.choices[0].message['content'].strip()
+            except Exception as e:
+                logger.error(f"OpenAI erro: {e}")
+        
+        # Fallback humanizado para status
+        dados = cliente_info.get('dados', {})
+        status = dados.get('status', 'Em processamento')
+        
+        if platform == "whatsapp":
+            if "agendado" in status.lower():
+                previsao_text = f" com previsão para {dados.get('previsao_conclusao', '')}" if dados.get('previsao_conclusao') else ""
+                return f"Oi {nome}! 😊 Seu serviço já está agendado{previsao_text}. Nossa equipe está organizando tudo para o dia marcado. Em breve você receberá mais detalhes!"
+            elif "andamento" in status.lower():
+                previsao_text = f" com previsão de conclusão {dados.get('previsao_conclusao', '')}" if dados.get('previsao_conclusao') else ""
+                return f"Olá {nome}! 🔧 Seu atendimento está em andamento{previsao_text}. Nossa equipe técnica está trabalhando no seu veículo neste momento."
+            elif "concluido" in status.lower():
+                return f"Oi {nome}! ✅ Ótima notícia - seu serviço foi concluído com sucesso!"
+            else:
+                return f"Oi {nome}! 📋 Seu atendimento está com status: {status}. Nossa equipe está cuidando de tudo!"
+        else:
+            if "agendado" in status.lower():
+                previsao_text = f" com previsão para {dados.get('previsao_conclusao', '')}" if dados.get('previsao_conclusao') else ""
+                return f"Olá {nome}! Seu serviço já está agendado{previsao_text}. Nossa equipe está organizando tudo para o dia marcado."
+            elif "andamento" in status.lower():
+                previsao_text = f" com previsão de conclusão {dados.get('previsao_conclusao', '')}" if dados.get('previsao_conclusao') else ""
+                return f"Olá {nome}! Seu atendimento está em andamento{previsao_text}. Nossa equipe técnica está trabalhando no seu veículo."
+            elif "concluido" in status.lower():
+                return f"Olá {nome}! Ótima notícia - seu serviço foi concluído com sucesso!"
+            else:
+                return f"Olá {nome}! Seu atendimento está com status: {status}. Nossa equipe está cuidando de tudo!"
+    
+    # Perguntas sobre etapas ou progresso
+    if any(keyword in pergunta_lower for keyword in ['etapa', 'progresso', 'andamento', 'fase']):
+        dados = cliente_info.get('dados', {})
+        status = dados.get('status', 'Em processamento')
+        
+        if status == "Serviço agendado com sucesso":
+            return """
+Seu serviço foi agendado com sucesso e está aguardando a data marcada para execução.
+
+As próximas etapas serão:
+1. Abertura da ordem de serviço
+2. Identificação da peça necessária
+3. Execução do serviço
+4. Inspeção de qualidade
+5. Entrega do veículo
+"""
+        elif status == "Ordem de Serviço Liberada":
+            return """
+Sua ordem de serviço já foi liberada! Isso significa que já identificamos o serviço necessário e autorizamos sua execução.
+
+As próximas etapas são:
+1. Separação da peça para o serviço
+2. Execução do serviço
+3. Inspeção de qualidade
+4. Entrega do veículo
+"""
+        elif status == "Peça Identificada":
+            return """
+A peça necessária para o seu veículo já foi identificada e separada em nosso estoque.
+
+As próximas etapas são:
+1. Execução do serviço
+2. Inspeção de qualidade
+3. Entrega do veículo
+"""
+        elif status == "Fotos Recebidas":
+            return """
+Recebemos as fotos do seu veículo e estamos analisando para preparar tudo para o atendimento.
+
+As próximas etapas são:
+1. Confirmação da peça necessária
+2. Execução do serviço
+3. Inspeção de qualidade
+4. Entrega do veículo
+"""
+        elif status == "Aguardando fotos para liberação da ordem":
+            return """
+Estamos aguardando as fotos do seu veículo para liberação da ordem de serviço.
+
+Você pode enviar as fotos pelo telefone 0800-701-9495 ou pelo e-mail atendimento@carglass.com.br.
+
+Após recebermos as fotos, as próximas etapas serão:
+1. Liberação da ordem de serviço
+2. Identificação da peça
+3. Execução do serviço
+4. Inspeção de qualidade
+5. Entrega do veículo
+"""
+        elif status == "Ordem de Serviço Aberta":
+            return """
+Sua ordem de serviço já foi aberta! Estamos nos preparando para realizar o atendimento.
+
+As próximas etapas são:
+1. Envio e análise de fotos
+2. Liberação da ordem
+3. Identificação da peça
+4. Execução do serviço
+5. Inspeção de qualidade
+6. Entrega do veículo
+"""
+    
+    # Fallback usando OpenAI ou genérico para outras perguntas
+    if config.OPENAI_API_KEY and len(config.OPENAI_API_KEY) > 10:
+        try:
+            import openai
+            openai.api_key = config.OPENAI_API_KEY
+            
+            dados = cliente_info.get('dados', {})
+            system_message = f"""
+            Você é Clara, assistente virtual da CarGlass. Cliente: {nome}
+            Status: {dados.get('status', 'N/A')}
+            Serviço: {dados.get('tipo_servico', 'N/A')}
+            
+            IMPORTANTE: Responda como uma pessoa real, de forma natural e conversacional.
+            Seja simpática, prestativa e humana. Não use listas ou formatação técnica.
+            NÃO use asteriscos duplos ou formatação markdown excessiva.
+            Mantenha um tom amigável e profissional.
+            
+            Central: 0800-701-9495
+            """
+            
+            response = openai.ChatCompletion.create(
+                model=config.OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": system_message},
+                    {"role": "user", "content": pergunta}
+                ],
+                max_tokens=150,
+                temperature=0.7
+            )
+            
+            return response.choices[0].message['content'].strip()
+        except Exception as e:
+            logger.error(f"OpenAI erro: {e}")
+    
+    # Fallback genérico melhorado
+    if platform == "whatsapp":
+        return f"Entendi sua pergunta, {nome}! 😊\n\nPara informações específicas:\n📞 0800-701-9495"
+    else:
+        return f"Entendi sua pergunta, {nome}. Para informações específicas, entre em contato: 📞 0800-701-9495"
+
+# ===== PROCESSAMENTO DE IDENTIFICAÇÃO =====
+def process_identification(user_input: str, session_data: SessionData) -> str:
+    """Processa identificação do cliente"""
+    tipo, valor = detect_identifier_type(user_input)
+    
+    logger.info(f"🔍 Processando identificação - Tipo: {tipo}, Valor: {valor[:4] if valor else 'None'}***")
+    
+    if not tipo:
+        logger.info("❌ Tipo de identificador não reconhecido")
+        if session_data.platform == "whatsapp":
+            return """
+Por favor, forneça um identificador válido:
+
+📋 CPF (11 dígitos)
+📱 Telefone (10 ou 11 dígitos)  
+🚗 Placa do veículo
+🔢 Número da ordem de serviço
+"""
+        else:
+            return """
+Por favor, forneça um identificador válido:
+
+📋 CPF (11 dígitos)
+📱 Telefone (10 ou 11 dígitos)
+🚗 Placa do veículo
+🔢 Número da ordem de serviço
+"""
+    
+    client_data = get_client_data(tipo, valor)
+    logger.info(f"📊 Resultado da consulta - Sucesso: {client_data.get('sucesso')}")
+    
+    if not client_data.get('sucesso'):
+        logger.info(f"❌ Cliente não encontrado: {tipo} = {valor}")
+        if session_data.platform == "whatsapp":
+            return f"""
+❌ Não encontrei informações com o {tipo} fornecido.
+
+Você pode tentar:
+• Verificar se digitou corretamente
+• Usar outro identificador  
+• Entrar em contato: 0800-701-9495
+"""
+        else:
+            return f"""
+❌ Não encontrei informações com o {tipo} fornecido.
+
+Você pode tentar:
+• Verificar se digitou corretamente
+• Usar outro identificador
+• Entrar em contato: 📞 0800-701-9495
+"""
+    
+    session_data.client_identified = True
+    session_data.client_info = client_data
+    
+    dados = client_data['dados']
+    nome = dados.get('nome', 'Cliente')
+    status = dados.get('status', 'Em processamento')
+    ordem = dados.get('ordem', 'N/A')
+    tipo_servico = dados.get('tipo_servico', 'N/A')
+    veiculo = dados.get('veiculo', {})
+    modelo = veiculo.get('modelo', 'N/A')
+    ano = veiculo.get('ano', 'N/A')
+    placa = veiculo.get('placa', 'N/A')
+    
+    logger.info(f"✅ Cliente identificado: {nome} - Status: {status}")
+    
+    # Resposta conversacional humanizada - SEM tags de status visuais
+    if config.OPENAI_API_KEY and len(config.OPENAI_API_KEY) > 10:
+        try:
+            import openai
+            openai.api_key = config.OPENAI_API_KEY
+            
+            system_message = f"""
+            Você é Clara, assistente virtual da CarGlass, falando com {nome}.
+            
+            Informações do atendimento:
+            - Ordem: {ordem}
+            - Status atual: {status}
+            - Serviço: {tipo_servico}
+            - Veículo: {modelo} ({ano})
+            - Placa: {placa}
+            
+            IMPORTANTE: 
+            1. Cumprimente o cliente pelo nome de forma natural
+            2. Explique o status atual de forma conversacional e humana
+            3. NUNCA mencione loja específica - se precisar falar de local, diga apenas "nossa equipe" ou "uma de nossas unidades"
+            4. Se cliente perguntar sobre loja, oriente para ligar 0800-701-9495
+            5. Seja natural, como se fosse uma pessoa real falando
+            6. NÃO use formatação excessiva ou asteriscos duplos
+            7. Inclua detalhes do veículo e ordem de forma natural na conversa
+            8. Termine perguntando como pode ajudar de forma amigável
+            
+            Mantenha um tom conversacional e amigável, como se estivesse falando pessoalmente.
+            """
+            
+            response = openai.ChatCompletion.create(
                 model=config.OPENAI_MODEL,
                 messages=[
                     {"role": "system", "content": system_message},
@@ -1120,11 +1368,11 @@ Qual serviço você gostaria de conhecer melhor?
                 temperature=0.7
             )
             
-                logger.info("✅ Resposta OpenAI gerada com sucesso")
-                return response.choices[0].message['content'].strip()
-                
-            except Exception as e:
-                logger.error(f"❌ OpenAI erro na identificação: {e}")
+            logger.info("✅ Resposta OpenAI gerada com sucesso")
+            return response.choices[0].message['content'].strip()
+            
+        except Exception as e:
+            logger.error(f"❌ OpenAI erro na identificação: {e}")
     
     # Fallback humanizado sem OpenAI
     previsao = dados.get('previsao_conclusao', '')
@@ -1133,7 +1381,7 @@ Qual serviço você gostaria de conhecer melhor?
         if "agendado" in status.lower():
             previsao_text = f" com previsão para {previsao}" if previsao else ""
             return f"""
-👋 Olá {nome}! 
+👋 Olá {nome}!  
 
 Sua ordem de serviço {ordem} para {tipo_servico} no seu {modelo} ({ano}), placa {placa}, está agendada{previsao_text}.
 
@@ -1144,7 +1392,7 @@ Sua ordem de serviço {ordem} para {tipo_servico} no seu {modelo} ({ano}), placa
         elif "andamento" in status.lower():
             previsao_text = f" com previsão de conclusão {previsao}" if previsao else ""
             return f"""
-👋 Olá {nome}! 
+👋 Olá {nome}!  
 
 Sua ordem de serviço {ordem} está em andamento. Nossa equipe está trabalhando na {tipo_servico} do seu {modelo} ({ano}), placa {placa}{previsao_text}.
 
@@ -1154,7 +1402,7 @@ Sua ordem de serviço {ordem} está em andamento. Nossa equipe está trabalhando
 """
         elif "concluído" in status.lower():
             return f"""
-👋 Olá {nome}! 
+👋 Olá {nome}!  
 
 ✅ Ótima notícia! Sua ordem {ordem} foi concluída com sucesso. A {tipo_servico} do seu {modelo} ({ano}), placa {placa}, está pronta.
 
@@ -1164,7 +1412,7 @@ Sua ordem de serviço {ordem} está em andamento. Nossa equipe está trabalhando
 """
         elif "aguardando fotos" in status.lower():
             return f"""
-👋 Olá {nome}! 
+👋 Olá {nome}!  
 
 Sua ordem {ordem} para {tipo_servico} no seu {modelo} ({ano}), placa {placa}, está aguardando as fotos para darmos continuidade.
 
@@ -1174,7 +1422,7 @@ Sua ordem {ordem} para {tipo_servico} no seu {modelo} ({ano}), placa {placa}, es
 """
         else:
             return f"""
-👋 Olá {nome}! 
+👋 Olá {nome}!  
 
 Encontrei sua ordem {ordem} para {tipo_servico} no seu {modelo} ({ano}), placa {placa}. No momento está: {status}.
 
@@ -1669,248 +1917,4 @@ if __name__ == '__main__':
     initialize_app()
     
     # Inicia aplicação
-    app.run(debug=config.DEBUG, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))Completion.create(
-                    model=config.OPENAI_MODEL,
-                    messages=[
-                        {"role": "system", "content": system_message},
-                        {"role": "user", "content": f"Como está meu atendimento?"}
-                    ],
-                    max_tokens=200,
-                    temperature=0.7
-                )
-                
-                return response.choices[0].message['content'].strip()
-            except Exception as e:
-                logger.error(f"OpenAI erro: {e}")
-        
-        # Fallback humanizado para status
-        dados = cliente_info.get('dados', {})
-        status = dados.get('status', 'Em processamento')
-        
-        if platform == "whatsapp":
-            if "agendado" in status.lower():
-                return f"Oi {nome}! 😊 Seu serviço já está agendado. Nossa equipe está organizando tudo para o dia marcado. Em breve você receberá mais detalhes!"
-            elif "andamento" in status.lower():
-                return f"Olá {nome}! 🔧 Seu atendimento está em andamento. Nossa equipe técnica está trabalhando no seu veículo neste momento."
-            elif "concluído" in status.lower():
-                return f"Oi {nome}! ✅ Ótima notícia - seu serviço foi concluído com sucesso!"
-            else:
-                return f"Oi {nome}! 📋 Seu atendimento está com status: {status}. Nossa equipe está cuidando de tudo!"
-        else:
-            if "agendado" in status.lower():
-                return f"Olá {nome}! Seu serviço já está agendado. Nossa equipe está organizando tudo para o dia marcado."
-            elif "andamento" in status.lower():
-                return f"Olá {nome}! Seu atendimento está em andamento. Nossa equipe técnica está trabalhando no seu veículo."
-            elif "concluído" in status.lower():
-                return f"Olá {nome}! Ótima notícia - seu serviço foi concluído com sucesso!"
-            else:
-                return f"Olá {nome}! Seu atendimento está com status: {status}. Nossa equipe está cuidando de tudo!"
-    
-    # Perguntas sobre etapas ou progresso
-    if any(keyword in pergunta_lower for keyword in ['etapa', 'progresso', 'andamento', 'fase']):
-        dados = cliente_info.get('dados', {})
-        status = dados.get('status', 'Em processamento')
-        
-        if status == "Serviço agendado com sucesso":
-            return """
-Seu serviço foi agendado com sucesso e está aguardando a data marcada para execução.
-
-As próximas etapas serão:
-1. Abertura da ordem de serviço
-2. Identificação da peça necessária
-3. Execução do serviço
-4. Inspeção de qualidade
-5. Entrega do veículo
-"""
-        elif status == "Ordem de Serviço Liberada":
-            return """
-Sua ordem de serviço já foi liberada! Isso significa que já identificamos o serviço necessário e autorizamos sua execução.
-
-As próximas etapas são:
-1. Separação da peça para o serviço
-2. Execução do serviço
-3. Inspeção de qualidade
-4. Entrega do veículo
-"""
-        elif status == "Peça Identificada":
-            return """
-A peça necessária para o seu veículo já foi identificada e separada em nosso estoque.
-
-As próximas etapas são:
-1. Execução do serviço
-2. Inspeção de qualidade
-3. Entrega do veículo
-"""
-        elif status == "Fotos Recebidas":
-            return """
-Recebemos as fotos do seu veículo e estamos analisando para preparar tudo para o atendimento.
-
-As próximas etapas são:
-1. Confirmação da peça necessária
-2. Execução do serviço
-3. Inspeção de qualidade
-4. Entrega do veículo
-"""
-        elif status == "Aguardando fotos para liberação da ordem":
-            return """
-Estamos aguardando as fotos do seu veículo para liberação da ordem de serviço.
-
-Você pode enviar as fotos pelo telefone 0800-701-9495 ou pelo e-mail atendimento@carglass.com.br.
-
-Após recebermos as fotos, as próximas etapas serão:
-1. Liberação da ordem de serviço
-2. Identificação da peça
-3. Execução do serviço
-4. Inspeção de qualidade
-5. Entrega do veículo
-"""
-        elif status == "Ordem de Serviço Aberta":
-            return """
-Sua ordem de serviço já foi aberta! Estamos nos preparando para realizar o atendimento.
-
-As próximas etapas são:
-1. Envio e análise de fotos
-2. Liberação da ordem
-3. Identificação da peça
-4. Execução do serviço
-5. Inspeção de qualidade
-6. Entrega do veículo
-"""
-    
-    # Fallback usando OpenAI ou genérico para outras perguntas
-    if config.OPENAI_API_KEY and len(config.OPENAI_API_KEY) > 10:
-        try:
-            import openai
-            openai.api_key = config.OPENAI_API_KEY
-            
-            dados = cliente_info.get('dados', {})
-            system_message = f"""
-            Você é Clara, assistente virtual da CarGlass. Cliente: {nome}
-            Status: {dados.get('status', 'N/A')}
-            Serviço: {dados.get('tipo_servico', 'N/A')}
-            
-            IMPORTANTE: Responda como uma pessoa real, de forma natural e conversacional.
-            Seja simpática, prestativa e humana. Não use listas ou formatação técnica.
-            NÃO use asteriscos duplos ou formatação markdown excessiva.
-            Mantenha um tom amigável e profissional.
-            
-            Central: 0800-701-9495
-            """
-            
-            response = openai.ChatCompletion.create(
-                model=config.OPENAI_MODEL,
-                messages=[
-                    {"role": "system", "content": system_message},
-                    {"role": "user", "content": pergunta}
-                ],
-                max_tokens=150,
-                temperature=0.7
-            )
-            
-            return response.choices[0].message['content'].strip()
-        except Exception as e:
-            logger.error(f"OpenAI erro: {e}")
-    
-    # Fallback genérico melhorado
-    if platform == "whatsapp":
-        return f"Entendi sua pergunta, {nome}! 😊\n\nPara informações específicas:\n📞 0800-701-9495"
-    else:
-        return f"Entendi sua pergunta, {nome}. Para informações específicas, entre em contato: 📞 0800-701-9495"
-
-# ===== PROCESSAMENTO DE IDENTIFICAÇÃO =====
-def process_identification(user_input: str, session_data: SessionData) -> str:
-    """Processa identificação do cliente"""
-    tipo, valor = detect_identifier_type(user_input)
-    
-    logger.info(f"🔍 Processando identificação - Tipo: {tipo}, Valor: {valor[:4] if valor else 'None'}***")
-    
-    if not tipo:
-        logger.info("❌ Tipo de identificador não reconhecido")
-        if session_data.platform == "whatsapp":
-            return """
-Por favor, forneça um identificador válido:
-
-📋 CPF (11 dígitos)
-📱 Telefone (10 ou 11 dígitos)  
-🚗 Placa do veículo
-🔢 Número da ordem de serviço
-"""
-        else:
-            return """
-Por favor, forneça um identificador válido:
-
-📋 CPF (11 dígitos)
-📱 Telefone (10 ou 11 dígitos)
-🚗 Placa do veículo
-🔢 Número da ordem de serviço
-"""
-    
-    client_data = get_client_data(tipo, valor)
-    logger.info(f"📊 Resultado da consulta - Sucesso: {client_data.get('sucesso')}")
-    
-    if not client_data.get('sucesso'):
-        logger.info(f"❌ Cliente não encontrado: {tipo} = {valor}")
-        if session_data.platform == "whatsapp":
-            return f"""
-❌ Não encontrei informações com o {tipo} fornecido.
-
-Você pode tentar:
-• Verificar se digitou corretamente
-• Usar outro identificador  
-• Entrar em contato: 0800-701-9495
-"""
-        else:
-            return f"""
-❌ Não encontrei informações com o {tipo} fornecido.
-
-Você pode tentar:
-• Verificar se digitou corretamente
-• Usar outro identificador
-• Entrar em contato: 📞 0800-701-9495
-"""
-    
-    session_data.client_identified = True
-    session_data.client_info = client_data
-    
-    dados = client_data['dados']
-    nome = dados.get('nome', 'Cliente')
-    status = dados.get('status', 'Em processamento')
-    ordem = dados.get('ordem', 'N/A')
-    tipo_servico = dados.get('tipo_servico', 'N/A')
-    veiculo = dados.get('veiculo', {})
-    modelo = veiculo.get('modelo', 'N/A')
-    ano = veiculo.get('ano', 'N/A')
-    placa = veiculo.get('placa', 'N/A')
-    
-    logger.info(f"✅ Cliente identificado: {nome} - Status: {status}")
-    
-    # Resposta conversacional humanizada - SEM tags de status visuais
-    if config.OPENAI_API_KEY and len(config.OPENAI_API_KEY) > 10:
-        try:
-            import openai
-            openai.api_key = config.OPENAI_API_KEY
-            
-            system_message = f"""
-            Você é Clara, assistente virtual da CarGlass, falando com {nome}.
-            
-            Informações do atendimento:
-            - Ordem: {ordem}
-            - Status atual: {status}
-            - Serviço: {tipo_servico}
-            - Veículo: {modelo} ({ano})
-            - Placa: {placa}
-            
-            IMPORTANTE: 
-            1. Cumprimente o cliente pelo nome de forma natural
-            2. Explique o status atual de forma conversacional e humana
-            3. NUNCA mencione loja específica - se precisar falar de local, diga apenas "nossa equipe" ou "uma de nossas unidades"
-            4. Se cliente perguntar sobre loja, oriente para ligar 0800-701-9495
-            5. Seja natural, como se fosse uma pessoa real falando
-            6. NÃO use formatação excessiva ou asteriscos duplos
-            7. Inclua detalhes do veículo e ordem de forma natural na conversa
-            8. Termine perguntando como pode ajudar de forma amigável
-            
-            Mantenha um tom conversacional e amigável, como se estivesse falando pessoalmente.
-            """
-            
-            response = openai.Chat
+    app.run(debug=config.DEBUG, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
