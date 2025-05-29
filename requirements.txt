@@ -1,6 +1,27 @@
+# ===== DEPENDÊNCIAS ORIGINAIS =====
 flask==2.3.3
 gunicorn==21.2.0
-requests==2.31.0
-openai==0.28.1
-python-dotenv==1.0.0
+
+# ===== DEPENDÊNCIAS ADICIONADAS PARA SEGURANÇA HML =====
+flask-limiter==3.5.0
 twilio==8.10.0
+bleach==6.1.0
+markupsafe==2.1.3
+
+# ===== DEPENDÊNCIAS OPCIONAIS (se usar OpenAI) =====
+openai==0.28.1
+requests==2.31.0
+
+# ===== DEPENDÊNCIAS IMPLÍCITAS (já incluídas no Flask/Python) =====
+# time - built-in
+# uuid - built-in  
+# re - built-in
+# json - built-in
+# os - built-in
+# logging - built-in
+# traceback - built-in
+# collections - built-in
+# hashlib - built-in
+# dataclasses - built-in (Python 3.7+)
+# typing - built-in (Python 3.5+)
+# functools - built-in
