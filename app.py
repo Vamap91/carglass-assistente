@@ -1,7 +1,3 @@
-"""
-Aplicação principal do Assistente Virtual CarGlass - Versão 2.1
-Correções: Número de atendimento atualizado + Respostas GPT mais humanizadas + Formatação limpa
-"""
 import os
 import logging
 import traceback
@@ -187,58 +183,88 @@ def sanitize_input(text: str) -> str:
     return text
 
 def validate_cpf(cpf: str) -> bool:
-    """Valida CPF com exceções para CPFs de teste"""
+    """Valida CPF com exceções para CPFs de teste - CORRIGIDO"""
     if not cpf or len(cpf) != 11:
+        logger.info(f"CPF inválido - tamanho: {len(cpf) if cpf else 0}")
         return False
     
-    # CPFs de teste sempre válidos
+    # CPFs de teste sempre válidos - EXPANSÃO DA LISTA
     test_cpfs = [
-        "12345678900",
-        "11938012431", 
+        "12345678900",  # Principal para testes
+        "11938012431",  
         "98765432100",
-        "11122233344"
+        "11122233344",
+        "33344455566",
+        "44455566677",
+        "55566677788",
+        "77788899900",
+        "22233344455"
     ]
     
     if cpf in test_cpfs:
+        logger.info(f"CPF de teste válido: {cpf[:3]}***")
         return True
     
     # Verifica se todos os dígitos são iguais
     if cpf == cpf[0] * 11:
+        logger.info(f"CPF inválido - dígitos iguais: {cpf}")
         return False
     
     # Validação matemática normal
-    soma = sum(int(cpf[i]) * (10 - i) for i in range(9))
-    resto = soma % 11
-    digito1 = 0 if resto < 2 else 11 - resto
-    
-    if int(cpf[9]) != digito1:
+    try:
+        soma = sum(int(cpf[i]) * (10 - i) for i in range(9))
+        resto = soma % 11
+        digito1 = 0 if resto < 2 else 11 - resto
+        
+        if int(cpf[9]) != digito1:
+            logger.info(f"CPF inválido - primeiro dígito: {cpf}")
+            return False
+        
+        soma = sum(int(cpf[i]) * (11 - i) for i in range(10))
+        resto = soma % 11
+        digito2 = 0 if resto < 2 else 11 - resto
+        
+        is_valid = int(cpf[10]) == digito2
+        logger.info(f"CPF {'válido' if is_valid else 'inválido'}: {cpf[:3]}***")
+        return is_valid
+    except Exception as e:
+        logger.error(f"Erro na validação CPF {cpf}: {e}")
         return False
-    
-    soma = sum(int(cpf[i]) * (11 - i) for i in range(10))
-    resto = soma % 11
-    digito2 = 0 if resto < 2 else 11 - resto
-    
-    return int(cpf[10]) == digito2
 
 def detect_identifier_type(text: str) -> Tuple[Optional[str], str]:
+    """Detecta tipo de identificador - CORRIGIDO"""
     if not text:
         return None, ""
     
     clean_text = re.sub(r'[^a-zA-Z0-9]', '', text.strip())
-    logger.info(f"Detectando tipo para: '{clean_text[:4]}***'")
+    logger.info(f"🔍 Detectando tipo para: '{clean_text}' (original: '{text}')")
     
+    # Verifica CPF primeiro (11 dígitos)
     if re.match(r'^\d{11}$', clean_text):
+        logger.info(f"Possível CPF detectado: {clean_text}")
         if validate_cpf(clean_text):
+            logger.info(f"✅ CPF válido confirmado: {clean_text[:3]}***")
             return "cpf", clean_text
         else:
+            logger.info(f"❌ CPF inválido: {clean_text}")
             return None, clean_text
+    
+    # Verifica telefone (10 ou 11 dígitos)
     elif re.match(r'^\d{10,11}$', clean_text):
+        logger.info(f"Telefone detectado: {clean_text[:4]}***")
         return "telefone", clean_text
+    
+    # Verifica placa
     elif re.match(r'^[A-Za-z]{3}\d{4}$', clean_text) or re.match(r'^[A-Za-z]{3}\d[A-Za-z]\d{2}$', clean_text):
+        logger.info(f"Placa detectada: {clean_text}")
         return "placa", clean_text.upper()
+    
+    # Verifica ordem de serviço
     elif re.match(r'^\d{1,8}$', clean_text):
+        logger.info(f"Ordem detectada: {clean_text}")
         return "ordem", clean_text
     
+    logger.info(f"❌ Nenhum tipo identificado para: {clean_text}")
     return None, clean_text
 
 def format_for_whatsapp(html_content: str) -> str:
@@ -313,6 +339,15 @@ class MemoryCache:
     def delete(self, key: str):
         if key in self.cache:
             del self.cache[key]
+    
+    def cleanup_expired(self):
+        """Remove itens expirados do cache"""
+        current_time = time.time()
+        expired_keys = [key for key, item in self.cache.items() if item['expires'] <= current_time]
+        for key in expired_keys:
+            del self.cache[key]
+        if expired_keys:
+            logger.info(f"Cache cleanup: removidos {len(expired_keys)} itens expirados")
 
 cache = MemoryCache()
 
@@ -343,6 +378,19 @@ class SessionData:
         }
         self.messages.append(message)
         self.update_activity()
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Converte SessionData para dicionário"""
+        return {
+            "session_id": self.session_id,
+            "created_at": self.created_at,
+            "last_activity": self.last_activity,
+            "client_identified": self.client_identified,
+            "client_info": self.client_info,
+            "messages": self.messages,
+            "platform": self.platform,
+            "phone_number": self.phone_number
+        }
 
 class SessionManager:
     def __init__(self):
@@ -379,6 +427,7 @@ class SessionManager:
             self.whatsapp_sessions[phone_number] = session_id
         
         self._cleanup_expired()
+        logger.info(f"Sessão criada: {session_id[:8]}*** - Plataforma: {platform}")
         return session_data
     
     def get_session(self, session_id: str) -> Optional[SessionData]:
@@ -390,6 +439,7 @@ class SessionManager:
             session_data.update_activity()
             return session_data
         elif session_data:
+            logger.info(f"Sessão expirada removida: {session_id[:8]}***")
             self._remove_session(session_id)
         
         return None
@@ -407,6 +457,7 @@ class SessionManager:
             else:
                 # Session expirou, remove mapeamento
                 del self.whatsapp_sessions[phone_number]
+                logger.info(f"Mapeamento WhatsApp removido: {phone_number[:4]}***")
         
         # Cria nova sessão WhatsApp
         return self.create_session("whatsapp", phone_number)
@@ -418,13 +469,31 @@ class SessionManager:
             if session_data.phone_number and session_data.phone_number in self.whatsapp_sessions:
                 del self.whatsapp_sessions[session_data.phone_number]
             del self.sessions[session_id]
+            logger.info(f"Sessão removida: {session_id[:8]}***")
     
     def _cleanup_expired(self):
         current_time = time.time()
-        expired = [sid for sid, data in self.sessions.items() 
-                  if current_time - data.last_activity > config.SESSION_TIMEOUT]
+        expired = [sid for sid, data in self.sessions.items()  
+                    if current_time - data.last_activity > config.SESSION_TIMEOUT]
         for sid in expired:
             self._remove_session(sid)
+        if expired:
+            logger.info(f"Limpeza de sessões: {len(expired)} sessões expiradas removidas")
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """Retorna estatísticas das sessões"""
+        total = len(self.sessions)
+        web_sessions = len([s for s in self.sessions.values() if s.platform == "web"])
+        whatsapp_sessions = len([s for s in self.sessions.values() if s.platform == "whatsapp"])
+        identified = len([s for s in self.sessions.values() if s.client_identified])
+        
+        return {
+            "total": total,
+            "web": web_sessions,
+            "whatsapp": whatsapp_sessions,
+            "identified": identified,
+            "unidentified": total - identified
+        }
 
 session_manager = SessionManager()
 
@@ -433,6 +502,7 @@ def get_client_data(tipo: str, valor: str) -> Dict[str, Any]:
     cache_key = f"client:{tipo}:{valor}"
     cached_result = cache.get(cache_key)
     if cached_result:
+        logger.info(f"Cache hit para {tipo}: {valor[:4]}***")
         return cached_result
     
     if config.USE_REAL_API:
@@ -479,6 +549,7 @@ def get_client_data(tipo: str, valor: str) -> Dict[str, Any]:
     return mock_data
 
 def get_mock_data(tipo: str, valor: str) -> Dict[str, Any]:
+    """Dados mockados completos para testes"""
     mock_database = {
         "12345678900": {
             "sucesso": True,
@@ -537,28 +608,93 @@ def get_mock_data(tipo: str, valor: str) -> Dict[str, Any]:
                 "loja": "CarGlass Morumbi",
                 "endereco_loja": "Av. Professor Francisco Morato, 2307 - Butantã"
             }
+        },
+        "44455566677": {
+            "sucesso": True,
+            "dados": {
+                "nome": "Pedro Mendes",
+                "cpf": "44455566677",
+                "telefone": "11933332222",
+                "ordem": "ORD24680",
+                "status": "Fotos Recebidas",
+                "tipo_servico": "Calibração ADAS",
+                "veiculo": {"modelo": "Jeep Compass", "placa": "MNO7890", "ano": "2023"},
+                "loja": "CarGlass Morumbi",
+                "endereco_loja": "Av. Professor Francisco Morato, 2307 - Butantã"
+            }
+        },
+        "55566677788": {
+            "sucesso": True,
+            "dados": {
+                "nome": "Paulo Mendes",
+                "cpf": "55566677788",
+                "telefone": "11911110000",
+                "ordem": "ORD36925",
+                "status": "Ordem de Serviço Aberta",
+                "tipo_servico": "Reparo de Parabrisa",
+                "veiculo": {"modelo": "Chevrolet Onix", "placa": "STU5678", "ano": "2021"},
+                "loja": "CarGlass Vila Mariana",
+                "endereco_loja": "Rua Domingos de Morais, 1267 - Vila Mariana"
+            }
+        },
+        "77788899900": {
+            "sucesso": True,
+            "dados": {
+                "nome": "Roberto Santos",
+                "cpf": "77788899900",
+                "telefone": "11933332222",
+                "ordem": "ORD24680",
+                "status": "Peça Identificada",
+                "tipo_servico": "Calibração ADAS",
+                "veiculo": {"modelo": "Jeep Compass", "placa": "MNO7890", "ano": "2023"},
+                "loja": "CarGlass Santo André",
+                "endereco_loja": "Av. Industrial, 600 - Santo André"
+            }
+        },
+        "22233344455": {
+            "sucesso": True,
+            "dados": {
+                "nome": "Fernanda Lima",
+                "cpf": "22233344455",
+                "telefone": "11922221111",
+                "ordem": "ORD13579",
+                "status": "Ordem de Serviço Liberada",
+                "tipo_servico": "Polimento de Faróis",
+                "veiculo": {"modelo": "Hyundai HB20", "placa": "PQR1234", "ano": "2022"},
+                "loja": "CarGlass Morumbi",
+                "endereco_loja": "Av. Professor Francisco Morato, 2307 - Butantã"
+            }
         }
     }
     
-    # Mapeamentos
+    # Mapeamentos completos
     ordem_para_cpf = {
         "123456": "12345678900", 
         "ORD12345": "12345678900",
         "ORD67890": "98765432100",
         "ORD54321": "11122233344",
-        "ORD98765": "33344455566"
+        "ORD98765": "33344455566",
+        "ORD24680": "44455566677",
+        "ORD36925": "55566677788",
+        "ORD13579": "22233344455"
     }
     telefone_para_cpf = {
         "11987654321": "12345678900",
         "11976543210": "98765432100",
         "11955556666": "11122233344",
-        "11944443333": "33344455566"
+        "11944443333": "33344455566",
+        "11933332222": "44455566677",
+        "11911110000": "55566677788",
+        "11922221111": "22233344455"
     }
     placa_para_cpf = {
         "ABC1234": "12345678900",
         "DEF5678": "98765432100",
         "GHI9012": "11122233344",
-        "JKL3456": "33344455566"
+        "JKL3456": "33344455566",
+        "MNO7890": "44455566677",
+        "STU5678": "55566677788",
+        "PQR1234": "22233344455"
     }
     
     cpf_key = None
@@ -572,12 +708,15 @@ def get_mock_data(tipo: str, valor: str) -> Dict[str, Any]:
         cpf_key = placa_para_cpf[valor]
     
     if cpf_key:
+        logger.info(f"✅ Dados encontrados para {tipo}: {valor}")
         return mock_database[cpf_key]
     
+    logger.info(f"❌ Cliente não encontrado para {tipo}: {valor}")
     return {"sucesso": False, "mensagem": f"Cliente não encontrado para {tipo}"}
 
 # ===== BARRA DE PROGRESSO =====
 def get_progress_bar_html(client_data: Dict[str, Any]) -> str:
+    """Gera HTML da barra de progresso baseado no status do cliente"""
     status = client_data['dados']['status']
     current_time = get_current_datetime()
     
@@ -672,8 +811,12 @@ def get_whatsapp_status_text(client_data: Dict[str, Any]) -> str:
 
 # ===== AI SERVICE =====
 def get_ai_response(pergunta: str, cliente_info: Dict[str, Any], platform: str = "web") -> str:
+    """Processa perguntas do cliente usando IA ou respostas predefinidas"""
     pergunta_lower = pergunta.lower()
     nome = cliente_info.get('dados', {}).get('nome', 'Cliente')
+    
+    # Log da pergunta
+    logger.info(f"Processando pergunta ({platform}): {pergunta[:50]}...")
     
     # Comandos especiais para WhatsApp
     if platform == "whatsapp":
@@ -717,15 +860,16 @@ Entendo sua dúvida, {nome}!
 
 Sou a Clara, assistente virtual da CarGlass. Estou aqui para te ajudar com informações sobre seu atendimento.
 
-📞 **Se preferir falar com nossa equipe:** 0800-701-9495
+📞 Se preferir falar com nossa equipe: 0800-701-9495
 
-💬 **Ou me diga: o que você gostaria de saber?**
+💬 Ou me diga: o que você gostaria de saber?
 """
     
-    # Respostas predefinidas (sem asteriscos desnecessários)
-    if any(keyword in pergunta_lower for keyword in ['loja', 'local', 'onde', 'endereço', 'trocar de loja', 'mudar local', 'mudar loja']):
-        if any(keyword in pergunta_lower for keyword in ['trocar', 'mudar', 'alterar', 'escolher']):
-            # Cliente quer trocar/mudar de loja
+    # CORREÇÃO: Política de lojas mais restritiva e específica
+    if any(keyword in pergunta_lower for keyword in ['loja', 'local', 'onde', 'endereço', 'trocar de loja', 'mudar local', 'mudar loja', 'troca de loja']):
+        # SEMPRE orienta para central quando menciona trocar/mudar
+        if any(keyword in pergunta_lower for keyword in ['trocar', 'mudar', 'alterar', 'escolher', 'troca']):
+            logger.info(f"Cliente solicitou troca de loja - orientando para central")
             if platform == "whatsapp":
                 return f"""
 🏪 Para trocar de loja é necessário consultar as lojas previamente.
@@ -738,16 +882,17 @@ Eles vão te ajudar a escolher a melhor loja para você! 😊
 """
             else:
                 return f"""
-🏪 **Para trocar de loja é necessário consultar as lojas previamente.**
+🏪 Para trocar de loja é necessário consultar as lojas previamente.
 
 Por favor, {nome}, entre em contato com nossa central de atendimento:
 
-📞 **0800-701-9495**
+📞 0800-701-9495
 
 Eles vão te ajudar a escolher a melhor loja para você!
 """
-        else:
-            # Cliente apenas quer saber sobre lojas (informativo)
+        # Apenas para consulta informativa específica (sem intenção de trocar)
+        elif any(keyword in pergunta_lower for keyword in ['onde fica', 'quais são', 'informação sobre lojas', 'conhecer as lojas']):
+            logger.info(f"Cliente solicitou informações sobre lojas - fornecendo lista")
             if platform == "whatsapp":
                 return """
 🏪 Lojas CarGlass próximas:
@@ -768,15 +913,35 @@ Santo André
 """
             else:
                 return """
-🏪 **Lojas CarGlass próximas:**
+🏪 Lojas CarGlass próximas:
 
-• **CarGlass Morumbi**: Av. Professor Francisco Morato, 2307 - Butantã
-• **CarGlass Vila Mariana**: Rua Domingos de Morais, 1267 - Vila Mariana
-• **CarGlass Santo André**: Av. Industrial, 600 - Santo André
+• CarGlass Morumbi: Av. Professor Francisco Morato, 2307 - Butantã
+• CarGlass Vila Mariana: Rua Domingos de Morais, 1267 - Vila Mariana
+• CarGlass Santo André: Av. Industrial, 600 - Santo André
 
-📞 **Para escolher sua loja:** 0800-701-9495
+📞 Para escolher sua loja: 0800-701-9495
+"""
+        else:
+            # Qualquer outra menção de loja = orientar para central
+            logger.info(f"Cliente mencionou loja - orientando para central por segurança")
+            if platform == "whatsapp":
+                return f"""
+🏪 Para informações sobre lojas, entre em contato com nossa central:
+
+📞 0800-701-9495
+
+Nossa equipe vai te ajudar com todas as informações! 😊
+"""
+            else:
+                return f"""
+🏪 Para informações sobre lojas, entre em contato com nossa central:
+
+📞 0800-701-9495
+
+Nossa equipe vai te ajudar com todas as informações!
 """
     
+    # Perguntas sobre garantia
     if any(keyword in pergunta_lower for keyword in ['garantia', 'seguro']):
         tipo_servico = cliente_info.get('dados', {}).get('tipo_servico', 'seu serviço')
         if platform == "whatsapp":
@@ -791,15 +956,16 @@ Santo André
 """
         else:
             return f"""
-🛡️ **Garantia CarGlass** para {tipo_servico}:
+🛡️ Garantia CarGlass para {tipo_servico}:
 
-✅ **12 meses** a partir da conclusão
+✅ 12 meses a partir da conclusão
 ✅ Cobre defeitos de instalação
 ✅ Válida em qualquer unidade CarGlass
 
-📞 Central: **0800-701-9495**
+📞 Central: 0800-701-9495
 """
     
+    # Perguntas sobre atendimento humano
     if any(keyword in pergunta_lower for keyword in ['falar com pessoa', 'atendente', 'humano']):
         if platform == "whatsapp":
             return """
@@ -813,18 +979,35 @@ Santo André
 """
         else:
             return """
-👥 **Falar com nossa equipe:**
+👥 Falar com nossa equipe:
 
-📞 **Central:** 0800-701-9495
+📞 Central: 0800-701-9495
 
-⏰ **Horário:**
+⏰ Horário:
 • Segunda a Sexta: 8h às 20h
 • Sábado: 8h às 16h
 """
     
+    # Perguntas sobre opções de serviço
+    if any(keyword in pergunta_lower for keyword in ['opção', 'opções', 'que serviços', 'posso fazer', 'oferecem']):
+        return """
+A CarGlass oferece diversos serviços para seu veículo:
+
+1. Troca de Parabrisa
+2. Reparo de Trincas
+3. Troca de Vidros Laterais
+4. Troca de Vidro Traseiro
+5. Calibração ADAS (sistemas avançados de assistência ao motorista)
+6. Polimento de Faróis
+7. Reparo e Troca de Retrovisores
+8. Película de Proteção Solar
+
+Qual serviço você gostaria de conhecer melhor?
+"""
+    
     # Para perguntas sobre status - usar GPT para resposta mais humanizada
     if any(keyword in pergunta_lower for keyword in ['status', 'como está', 'situação', 'andamento', 'etapa', 'fase']):
-        if config.OPENAI_API_KEY and len(config.OPENAI_API_KEY) > 10:  # Verifica se a chave parece válida
+        if config.OPENAI_API_KEY and len(config.OPENAI_API_KEY) > 10:
             try:
                 import openai
                 openai.api_key = config.OPENAI_API_KEY
@@ -876,13 +1059,84 @@ Santo André
                 return f"Oi {nome}! 📋 Seu atendimento está com status: {status}. Nossa equipe está cuidando de tudo!"
         else:
             if "agendado" in status.lower():
-                return f"Olá {nome}! Seu serviço já está **agendado**. Nossa equipe está organizando tudo para o dia marcado."
+                return f"Olá {nome}! Seu serviço já está agendado. Nossa equipe está organizando tudo para o dia marcado."
             elif "andamento" in status.lower():
-                return f"Olá {nome}! Seu atendimento está **em andamento**. Nossa equipe técnica está trabalhando no seu veículo."
+                return f"Olá {nome}! Seu atendimento está em andamento. Nossa equipe técnica está trabalhando no seu veículo."
             elif "concluído" in status.lower():
-                return f"Olá {nome}! Ótima notícia - seu serviço foi **concluído** com sucesso!"
+                return f"Olá {nome}! Ótima notícia - seu serviço foi concluído com sucesso!"
             else:
-                return f"Olá {nome}! Seu atendimento está com status: **{status}**. Nossa equipe está cuidando de tudo!"
+                return f"Olá {nome}! Seu atendimento está com status: {status}. Nossa equipe está cuidando de tudo!"
+    
+    # Perguntas sobre etapas ou progresso
+    if any(keyword in pergunta_lower for keyword in ['etapa', 'progresso', 'andamento', 'fase']):
+        dados = cliente_info.get('dados', {})
+        status = dados.get('status', 'Em processamento')
+        
+        if status == "Serviço agendado com sucesso":
+            return """
+Seu serviço foi agendado com sucesso e está aguardando a data marcada para execução.
+
+As próximas etapas serão:
+1. Abertura da ordem de serviço
+2. Identificação da peça necessária
+3. Execução do serviço
+4. Inspeção de qualidade
+5. Entrega do veículo
+"""
+        elif status == "Ordem de Serviço Liberada":
+            return """
+Sua ordem de serviço já foi liberada! Isso significa que já identificamos o serviço necessário e autorizamos sua execução.
+
+As próximas etapas são:
+1. Separação da peça para o serviço
+2. Execução do serviço
+3. Inspeção de qualidade
+4. Entrega do veículo
+"""
+        elif status == "Peça Identificada":
+            return """
+A peça necessária para o seu veículo já foi identificada e separada em nosso estoque.
+
+As próximas etapas são:
+1. Execução do serviço
+2. Inspeção de qualidade
+3. Entrega do veículo
+"""
+        elif status == "Fotos Recebidas":
+            return """
+Recebemos as fotos do seu veículo e estamos analisando para preparar tudo para o atendimento.
+
+As próximas etapas são:
+1. Confirmação da peça necessária
+2. Execução do serviço
+3. Inspeção de qualidade
+4. Entrega do veículo
+"""
+        elif status == "Aguardando fotos para liberação da ordem":
+            return """
+Estamos aguardando as fotos do seu veículo para liberação da ordem de serviço.
+
+Você pode enviar as fotos pelo telefone 0800-701-9495 ou pelo e-mail atendimento@carglass.com.br.
+
+Após recebermos as fotos, as próximas etapas serão:
+1. Liberação da ordem de serviço
+2. Identificação da peça
+3. Execução do serviço
+4. Inspeção de qualidade
+5. Entrega do veículo
+"""
+        elif status == "Ordem de Serviço Aberta":
+            return """
+Sua ordem de serviço já foi aberta! Estamos nos preparando para realizar o atendimento.
+
+As próximas etapas são:
+1. Envio e análise de fotos
+2. Liberação da ordem
+3. Identificação da peça
+4. Execução do serviço
+5. Inspeção de qualidade
+6. Entrega do veículo
+"""
     
     # Fallback usando OpenAI ou genérico para outras perguntas
     if config.OPENAI_API_KEY and len(config.OPENAI_API_KEY) > 10:
@@ -922,13 +1176,17 @@ Santo André
     if platform == "whatsapp":
         return f"Entendi sua pergunta, {nome}! 😊\n\nPara informações específicas:\n📞 0800-701-9495"
     else:
-        return f"Entendi sua pergunta, {nome}. Para informações específicas, entre em contato: 📞 **0800-701-9495**"
+        return f"Entendi sua pergunta, {nome}. Para informações específicas, entre em contato: 📞 0800-701-9495"
 
 # ===== PROCESSAMENTO DE IDENTIFICAÇÃO =====
 def process_identification(user_input: str, session_data: SessionData) -> str:
+    """Processa identificação do cliente"""
     tipo, valor = detect_identifier_type(user_input)
     
+    logger.info(f"🔍 Processando identificação - Tipo: {tipo}, Valor: {valor[:4] if valor else 'None'}***")
+    
     if not tipo:
+        logger.info("❌ Tipo de identificador não reconhecido")
         if session_data.platform == "whatsapp":
             return """
 Por favor, forneça um identificador válido:
@@ -942,15 +1200,17 @@ Por favor, forneça um identificador válido:
             return """
 Por favor, forneça um identificador válido:
 
-📋 **CPF** (11 dígitos)
-📱 **Telefone** (10 ou 11 dígitos)
-🚗 **Placa do veículo**
-🔢 **Número da ordem de serviço**
+📋 CPF (11 dígitos)
+📱 Telefone (10 ou 11 dígitos)
+🚗 Placa do veículo
+🔢 Número da ordem de serviço
 """
     
     client_data = get_client_data(tipo, valor)
+    logger.info(f"📊 Resultado da consulta - Sucesso: {client_data.get('sucesso')}")
     
     if not client_data.get('sucesso'):
+        logger.info(f"❌ Cliente não encontrado: {tipo} = {valor}")
         if session_data.platform == "whatsapp":
             return f"""
 ❌ Não encontrei informações com o {tipo} fornecido.
@@ -962,12 +1222,12 @@ Você pode tentar:
 """
         else:
             return f"""
-❌ **Não encontrei informações** com o {tipo} fornecido.
+❌ Não encontrei informações com o {tipo} fornecido.
 
-**Você pode tentar:**
+Você pode tentar:
 • Verificar se digitou corretamente
 • Usar outro identificador
-• Entrar em contato: **📞 0800-701-9495**
+• Entrar em contato: 📞 0800-701-9495
 """
     
     session_data.client_identified = True
@@ -982,6 +1242,8 @@ Você pode tentar:
     modelo = veiculo.get('modelo', 'N/A')
     ano = veiculo.get('ano', 'N/A')
     placa = veiculo.get('placa', 'N/A')
+    
+    logger.info(f"✅ Cliente identificado: {nome} - Status: {status}")
     
     # Resposta conversacional humanizada - SEM tags de status visuais
     if config.OPENAI_API_KEY and len(config.OPENAI_API_KEY) > 10:
@@ -1022,10 +1284,11 @@ Você pode tentar:
                 temperature=0.7
             )
             
+            logger.info("✅ Resposta OpenAI gerada com sucesso")
             return response.choices[0].message['content'].strip()
             
         except Exception as e:
-            logger.error(f"OpenAI erro na identificação: {e}")
+            logger.error(f"❌ OpenAI erro na identificação: {e}")
     
     # Fallback humanizado sem OpenAI
     previsao = dados.get('previsao_conclusao', '')
@@ -1088,54 +1351,54 @@ Encontrei sua ordem {ordem} para {tipo_servico} no seu {modelo} ({ano}), placa {
         if "agendado" in status.lower():
             previsao_text = f" com previsão para {previsao}" if previsao else ""
             return f"""
-👋 **Olá {nome}!** Encontrei suas informações.
+👋 Olá {nome}! Encontrei suas informações.
 
-Sua ordem de serviço {ordem} para **{tipo_servico}** no seu {modelo} ({ano}), placa {placa}, está **agendada**{previsao_text}.
+Sua ordem de serviço {ordem} para {tipo_servico} no seu {modelo} ({ano}), placa {placa}, está agendada{previsao_text}.
 
-🏪 **Nossa equipe já está organizando tudo para você.**
+🏪 Nossa equipe já está organizando tudo para você.
 
-💬 **Como posso te ajudar?**
+💬 Como posso te ajudar?
 """
         elif "andamento" in status.lower():
             previsao_text = f" com previsão de conclusão {previsao}" if previsao else ""
             return f"""
-👋 **Olá {nome}!** Encontrei suas informações.
+👋 Olá {nome}! Encontrei suas informações.
 
-Sua ordem de serviço {ordem} está **em andamento**. Nossa equipe está trabalhando na {tipo_servico} do seu {modelo} ({ano}), placa {placa}{previsao_text}.
+Sua ordem de serviço {ordem} está em andamento. Nossa equipe está trabalhando na {tipo_servico} do seu {modelo} ({ano}), placa {placa}{previsao_text}.
 
 🔧 Tudo está correndo bem e dentro do prazo previsto.
 
-💬 **Precisa de alguma informação específica?**
+💬 Precisa de alguma informação específica?
 """
         elif "concluído" in status.lower():
             return f"""
-👋 **Olá {nome}!** Encontrei suas informações.
+👋 Olá {nome}! Encontrei suas informações.
 
-✅ Ótima notícia! Sua ordem {ordem} foi **concluída** com sucesso. A {tipo_servico} do seu {modelo} ({ano}), placa {placa}, está pronta.
+✅ Ótima notícia! Sua ordem {ordem} foi concluída com sucesso. A {tipo_servico} do seu {modelo} ({ano}), placa {placa}, está pronta.
 
-🏪 **Você pode retirar seu veículo em nossa unidade.**
+🏪 Você pode retirar seu veículo em nossa unidade.
 
-💬 **Posso te ajudar com mais alguma coisa?**
+💬 Posso te ajudar com mais alguma coisa?
 """
         elif "aguardando fotos" in status.lower():
             return f"""
-👋 **Olá {nome}!** Encontrei suas informações.
+👋 Olá {nome}! Encontrei suas informações.
 
-Sua ordem {ordem} para {tipo_servico} no seu {modelo} ({ano}), placa {placa}, está **aguardando as fotos** para darmos continuidade.
+Sua ordem {ordem} para {tipo_servico} no seu {modelo} ({ano}), placa {placa}, está aguardando as fotos para darmos continuidade.
 
-📷 Você pode enviar pelo nosso sistema ou entrar em contato: **0800-701-9495**
+📷 Você pode enviar pelo nosso sistema ou entrar em contato: 0800-701-9495
 
-💬 **Precisa de ajuda para enviar as fotos?**
+💬 Precisa de ajuda para enviar as fotos?
 """
         else:
             return f"""
-👋 **Olá {nome}!** Encontrei suas informações.
+👋 Olá {nome}! Encontrei suas informações.
 
-Sua ordem {ordem} para {tipo_servico} no seu {modelo} ({ano}), placa {placa}, está com status: **{status}**.
+Sua ordem {ordem} para {tipo_servico} no seu {modelo} ({ano}), placa {placa}, está com status: {status}.
 
-🏪 **Nossa equipe está cuidando de tudo para você.**
+🏪 Nossa equipe está cuidando de tudo para você.
 
-💬 **Como posso te ajudar?**
+💬 Como posso te ajudar?
 """
 
 # ===== FLASK APP =====
@@ -1182,6 +1445,7 @@ def get_messages():
 def send_message():
     try:
         user_input = sanitize_input(request.form.get('message', ''))
+        logger.info(f"📨 Mensagem recebida: {user_input[:50]}...")
         
         session_id = session.get('session_id')
         session_data = session_manager.get_session(session_id)
@@ -1203,6 +1467,7 @@ def send_message():
         
     except Exception as e:
         logger.error(f"Erro ao processar mensagem: {e}")
+        logger.error(traceback.format_exc())
         return jsonify({
             'messages': [{
                 "role": "assistant",
@@ -1298,7 +1563,7 @@ def test_openai():
     
     if len(config.OPENAI_API_KEY) < 10:
         return jsonify({
-            "status": "error", 
+            "status": "error",  
             "message": f"OPENAI_API_KEY parece inválida (muito curta): {config.OPENAI_API_KEY[:10]}..."
         })
     
@@ -1332,23 +1597,37 @@ def test_openai():
 
 @app.route('/health')
 def health_check():
-    return jsonify({
-        "status": "healthy",
-        "timestamp": get_current_time(),
-        "sessions": {
-            "web": len([s for s in session_manager.sessions.values() if s.platform == "web"]),
-            "whatsapp": len([s for s in session_manager.sessions.values() if s.platform == "whatsapp"]),
-            "total": len(session_manager.sessions)
-        },
-        "cache_items": len(cache.cache),
-        "twilio_enabled": twilio_handler.is_enabled(),
-        "config": {
-            "use_real_api": config.USE_REAL_API,
-            "openai_configured": bool(config.OPENAI_API_KEY),
-            "openai_key_length": len(config.OPENAI_API_KEY) if config.OPENAI_API_KEY else 0,
-            "openai_model": config.OPENAI_MODEL
-        }
-    })
+    """Endpoint para verificação de saúde da aplicação"""
+    try:
+        # Cleanup periódico
+        cache.cleanup_expired()
+        session_manager._cleanup_expired()
+        
+        stats = session_manager.get_stats()
+        
+        return jsonify({
+            "status": "healthy",
+            "timestamp": get_current_time(),
+            "sessions": stats,
+            "cache_items": len(cache.cache),
+            "twilio_enabled": twilio_handler.is_enabled(),
+            "config": {
+                "use_real_api": config.USE_REAL_API,
+                "openai_configured": bool(config.OPENAI_API_KEY),
+                "openai_key_length": len(config.OPENAI_API_KEY) if config.OPENAI_API_KEY else 0,
+                "openai_model": config.OPENAI_MODEL,
+                "session_timeout": config.SESSION_TIMEOUT,
+                "cache_ttl": config.CACHE_TTL
+            },
+            "version": "2.1"
+        })
+    except Exception as e:
+        logger.error(f"Erro no health check: {e}")
+        return jsonify({
+            "status": "error",
+            "message": str(e),
+            "timestamp": get_current_time()
+        }), 500
 
 @app.route('/whatsapp/status')
 def whatsapp_status():
@@ -1366,29 +1645,117 @@ def whatsapp_status():
         "webhook_url": request.url_root + "whatsapp/webhook"
     })
 
+@app.route('/debug/sessions')
+def debug_sessions():
+    """Endpoint para debug das sessões (apenas em modo DEBUG)"""
+    if not config.DEBUG:
+        return jsonify({"error": "Debug mode not enabled"}), 403
+    
+    try:
+        sessions_info = []
+        for session_id, session_data in session_manager.sessions.items():
+            sessions_info.append({
+                "session_id": session_id[:8] + "***",
+                "platform": session_data.platform,
+                "client_identified": session_data.client_identified,
+                "messages_count": len(session_data.messages),
+                "created_at": time.strftime("%H:%M:%S", time.localtime(session_data.created_at)),
+                "last_activity": time.strftime("%H:%M:%S", time.localtime(session_data.last_activity)),
+                "phone_number": session_data.phone_number[:4] + "***" if session_data.phone_number else None
+            })
+        
+        return jsonify({
+            "total_sessions": len(sessions_info),
+            "sessions": sessions_info,
+            "whatsapp_mappings": len(session_manager.whatsapp_sessions)
+        })
+    except Exception as e:
+        logger.error(f"Erro no debug sessions: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/debug/cache')
+def debug_cache():
+    """Endpoint para debug do cache (apenas em modo DEBUG)"""
+    if not config.DEBUG:
+        return jsonify({"error": "Debug mode not enabled"}), 403
+    
+    try:
+        cache_info = {}
+        current_time = time.time()
+        
+        for key, item in cache.cache.items():
+            cache_info[key] = {
+                "expires_in": max(0, int(item['expires'] - current_time)),
+                "size": len(str(item['value']))
+            }
+        
+        return jsonify({
+            "cache_size": len(cache.cache),
+            "max_items": cache.max_items,
+            "items": cache_info
+        })
+    except Exception as e:
+        logger.error(f"Erro no debug cache: {e}")
+        return jsonify({"error": str(e)}), 500
+
 # ===== TRATAMENTO DE ERROS =====
 @app.errorhandler(404)
 def not_found(error):
+    logger.warning(f"404 - Página não encontrada: {request.url}")
     return jsonify({'error': 'Endpoint não encontrado'}), 404
 
 @app.errorhandler(500)
 def internal_error(error):
     logger.error(f"Erro interno: {error}")
+    logger.error(traceback.format_exc())
     return jsonify({'error': 'Erro interno do servidor'}), 500
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    logger.error(f"Exceção não tratada: {e}")
+    logger.error(traceback.format_exc())
+    return jsonify({'error': 'Erro interno do servidor'}), 500
+
+# ===== INICIALIZAÇÃO =====
+def initialize_app():
+    """Inicializa componentes da aplicação"""
+    logger.info("🔧 Inicializando componentes da aplicação...")
+    
+    # Cleanup inicial
+    cache.cleanup_expired()
+    session_manager._cleanup_expired()
+    
+    # Testa configurações
+    if config.OPENAI_API_KEY:
+        logger.info("✅ OpenAI API Key configurada")
+    else:
+        logger.warning("⚠️ OpenAI API Key não configurada - usando fallbacks")
+    
+    if twilio_handler.is_enabled():
+        logger.info("✅ Twilio WhatsApp habilitado")
+    else:
+        logger.warning("⚠️ Twilio WhatsApp desabilitado")
+    
+    logger.info("✅ Aplicação inicializada com sucesso")
 
 if __name__ == '__main__':
     logger.info("🚀 CarGlass Assistant v2.1 + Twilio WhatsApp iniciando...")
     logger.info(f"Modo API: {'REAL' if config.USE_REAL_API else 'SIMULAÇÃO'}")
     logger.info(f"OpenAI: {'CONFIGURADO' if config.OPENAI_API_KEY else 'FALLBACK'}")
     logger.info(f"Twilio WhatsApp: {'HABILITADO' if twilio_handler.is_enabled() else 'DESABILITADO'}")
+    logger.info(f"Debug Mode: {'HABILITADO' if config.DEBUG else 'DESABILITADO'}")
     
     if twilio_handler.is_enabled():
         logger.info(f"📱 WhatsApp número: {config.TWILIO_WHATSAPP_NUMBER}")
         logger.info(f"🔗 Webhook URL: http://localhost:5000/whatsapp/webhook (configure no Twilio)")
     else:
         logger.warning("⚠️ Para habilitar WhatsApp, configure as variáveis:")
-        logger.warning("   TWILIO_ACCOUNT_SID=ACxxxxx")
-        logger.warning("   TWILIO_AUTH_TOKEN=xxxxx")
-        logger.warning("   TWILIO_WHATSAPP_NUMBER=whatsapp:+14155238886")
+        logger.warning("    TWILIO_ACCOUNT_SID=ACxxxxx")
+        logger.warning("    TWILIO_AUTH_TOKEN=xxxxx")
+        logger.warning("    TWILIO_WHATSAPP_NUMBER=whatsapp:+14155238886")
     
+    # Inicializa componentes
+    initialize_app()
+    
+    # Inicia aplicação
     app.run(debug=config.DEBUG, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
