@@ -34,7 +34,7 @@ class Config:
     OPENAI_API_KEY: str = os.getenv('OPENAI_API_KEY', '')
     OPENAI_MODEL: str = os.getenv('OPENAI_MODEL', 'gpt-4-turbo')
     CARGLASS_API_URL: str = os.getenv('CARGLASS_API_URL', 'http://10.10.100.240:3000/api/status')
-    USE_REAL_API: bool = os.getenv('USE_REAL_API', 'true').lower() == 'true') # Corrigido aqui
+    USE_REAL_API: bool = os.getenv('USE_REAL_API', 'true').lower() == 'true' # Corrigido aqui
     SESSION_TIMEOUT: int = int(os.getenv('SESSION_TIMEOUT', '1800'))
     CACHE_TTL: int = int(os.getenv('CACHE_TTL', '300'))
     
