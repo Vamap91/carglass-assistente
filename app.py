@@ -22,8 +22,7 @@ No código que você forneceu anteriormente, a inicialização do `Limiter` é a
 ```python
 limiter = Limiter(
     app,
-    key_func=get_remote_address, # <<-- Aqui key_func é definido
-    default_limits=["500 per day", "100 per hour"],
+    default_limits=["500 per day", "100 per hour"],  # Mais permissivo para testes
     storage_uri="memory://"
 )
 ```
