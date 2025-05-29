@@ -1120,11 +1120,11 @@ Qual serviço você gostaria de conhecer melhor?
                 temperature=0.7
             )
             
-            logger.info("✅ Resposta OpenAI gerada com sucesso")
-            return response.choices[0].message['content'].strip()
-            
-        except Exception as e:
-            logger.error(f"❌ OpenAI erro na identificação: {e}")
+                logger.info("✅ Resposta OpenAI gerada com sucesso")
+                return response.choices[0].message['content'].strip()
+                
+            except Exception as e:
+                logger.error(f"❌ OpenAI erro na identificação: {e}")
     
     # Fallback humanizado sem OpenAI
     previsao = dados.get('previsao_conclusao', '')
