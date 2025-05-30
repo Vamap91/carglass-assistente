@@ -1356,7 +1356,7 @@ Informações do atendimento:
 
 IMPORTANTE:
 1. Cumprimente o cliente pelo nome de forma natural e amigável.
-2. Explique o status atual, mencionando as etapas que já foram concluídas e as próximas etapas.
+2. Explique o status atual, e mencione a próxima etapa.
 3. Integre os detalhes do veículo e da ordem de serviço de forma natural na conversa.
 4. NUNCA mencione loja específica pelo nome. Se precisar falar de local, diga apenas "em uma de nossas unidades" ou "nossa equipe".
 5. Seja natural, como se fosse uma pessoa real falando.
